@@ -1,0 +1,5 @@
+# Supabase project config
+# Минимальный конфиг для GitHub integration + CLI link.
+# Дополнительные настройки (local dev через `supabase start`) добавим позже когда понадобится.
+
+project_id = "hzcghcrvspewuczfbpol"
