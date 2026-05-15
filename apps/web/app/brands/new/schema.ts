@@ -1,11 +1,36 @@
 import { z } from "zod";
 
-// Brand wizard — 7+1 steps. Schema mirrors brands + brand_configs rows.
+// Brand wizard — 6+1 steps. Schema mirrors brands + brand_configs rows.
 // ADR-0014 D1/D2 add approval_mode and voice_samples.
+//
+// 2026-05-15 — Voice step merges multi-article paste (was separate step 7).
 
 const LANGUAGES = ["en", "es", "ru", "pt", "fr"] as const;
 
 const SlugRegex = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+// Bare-domain friendly URL: accepts `24clima.com`, `https://24clima.com`, or
+// empty. The action normalizes via normalizeWebsite() before DB insert.
+const WebsiteShape = z
+  .string()
+  .trim()
+  .max(500)
+  .optional()
+  .refine(
+    (v) =>
+      !v ||
+      /^https?:\/\/.+\..+/i.test(v) ||
+      /^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(\/.*)?$/i.test(v),
+    "Looks invalid — try something like 24clima.com",
+  );
+
+export function normalizeWebsite(input: string | undefined | null): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
 
 export const BasicsSchema = z.object({
   name: z.string().trim().min(1, "Required").max(80),
@@ -15,15 +40,27 @@ export const BasicsSchema = z.object({
     .min(2)
     .max(40)
     .regex(SlugRegex, "Lowercase letters, digits, hyphens; no leading/trailing -"),
-  website_url: z.string().trim().url("Must be a valid URL").or(z.literal("")).optional(),
+  website_url: WebsiteShape,
   industry: z.string().trim().max(80).optional(),
   primary_language: z.enum(LANGUAGES),
   description: z.string().trim().max(500).optional(),
 });
 
+// Voice articles — paste up to 3 articles representing how the brand writes.
+// Each capped at 3000 words. The text is auto-truncated client-side so the
+// user does not have to count words manually.
+export const MAX_VOICE_ARTICLES = 3;
+export const MAX_VOICE_WORDS = 3000;
+
+const VoiceArticleSchema = z.object({
+  text: z.string().trim().min(20, "Too short to be useful").max(30_000),
+  source: z.enum(["linkedin", "manual", "blog", "newsletter"]),
+});
+
 export const VoiceSchema = z.object({
-  brand_voice: z.string().trim().max(5000).optional(),
+  brand_voice: z.string().trim().max(500).optional(),
   tone_attributes: z.array(z.string().trim().min(1).max(40)).max(8),
+  voice_samples: z.array(VoiceArticleSchema).max(MAX_VOICE_ARTICLES),
 });
 
 export const WordGuardsSchema = z.object({
@@ -51,21 +88,11 @@ export const ApprovalSchema = z.object({
   approval_mode: z.enum(["manual", "auto"]),
 });
 
-const VoiceSampleSchema = z.object({
-  text: z.string().trim().min(20, "Too short to be useful").max(3000),
-  source: z.enum(["linkedin", "manual"]),
-});
-
-export const VoiceSamplesSchema = z.object({
-  voice_samples: z.array(VoiceSampleSchema).max(5),
-});
-
 export const WizardSchema = BasicsSchema.merge(VoiceSchema)
   .merge(WordGuardsSchema)
   .merge(VocSchema)
   .merge(SeoSchema)
-  .merge(ApprovalSchema)
-  .merge(VoiceSamplesSchema);
+  .merge(ApprovalSchema);
 
 export type WizardData = z.infer<typeof WizardSchema>;
 
@@ -74,9 +101,8 @@ export const STEPS = [
   { id: "voice", label: "Brand voice", schema: VoiceSchema },
   { id: "word-guards", label: "Word guards", schema: WordGuardsSchema },
   { id: "voc", label: "Customer voice", schema: VocSchema },
-  { id: "seo", label: "SEO keywords", schema: SeoSchema },
+  { id: "seo", label: "SEO keywords (optional)", schema: SeoSchema },
   { id: "approval", label: "Approval mode", schema: ApprovalSchema },
-  { id: "voice-samples", label: "Voice samples (optional)", schema: VoiceSamplesSchema, optional: true },
   { id: "review", label: "Review & create" },
 ] as const;
 
@@ -93,6 +119,7 @@ export const wizardDefaults: WizardData = {
   description: "",
   brand_voice: "",
   tone_attributes: [],
+  voice_samples: [],
   forbidden_words: [],
   required_phrases: [],
   voc_pain_points: [],
@@ -101,7 +128,6 @@ export const wizardDefaults: WizardData = {
   seo_keywords_primary: [],
   seo_keywords_secondary: [],
   approval_mode: "manual",
-  voice_samples: [],
 };
 
 export function slugify(input: string): string {
@@ -113,4 +139,18 @@ export function slugify(input: string): string {
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
+}
+
+// Truncate text to N words, keeping leading whitespace stripped. Used by the
+// voice-articles textarea so users do not have to manually trim long pastes.
+export function truncateWords(text: string, maxWords: number): string {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text;
+  return words.slice(0, maxWords).join(" ");
+}
+
+export function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
 }

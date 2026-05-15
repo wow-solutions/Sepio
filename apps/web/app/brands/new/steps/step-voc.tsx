@@ -15,7 +15,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { TagInput } from "@/components/tag-input";
 import type { WizardData } from "../schema";
 
-function QuoteList({ name }: { name: "voc_pain_points" | "voc_desired_outcomes" }) {
+function QuoteList({
+  name,
+  quotePlaceholder,
+}: {
+  name: "voc_pain_points" | "voc_desired_outcomes";
+  quotePlaceholder: string;
+}) {
   const { control, register } = useFormContext<WizardData>();
   const { fields, append, remove } = useFieldArray({ control, name });
   return (
@@ -31,7 +37,7 @@ function QuoteList({ name }: { name: "voc_pain_points" | "voc_desired_outcomes" 
                   Quote
                 </FormLabel>
                 <FormControl>
-                  <Textarea rows={2} {...field} />
+                  <Textarea rows={2} placeholder={quotePlaceholder} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -39,7 +45,7 @@ function QuoteList({ name }: { name: "voc_pain_points" | "voc_desired_outcomes" 
           />
           <div className="flex gap-2">
             <Input
-              placeholder="Source (Twitter, customer call, …)"
+              placeholder="Source (Twitter, customer call, support ticket…)"
               {...register(`${name}.${idx}.source` as const)}
             />
             <Button type="button" variant="ghost" onClick={() => remove(idx)}>
@@ -54,7 +60,7 @@ function QuoteList({ name }: { name: "voc_pain_points" | "voc_desired_outcomes" 
           variant="outline"
           onClick={() => append({ quote: "", source: "" })}
         >
-          Add quote
+          + Add quote ({fields.length} / 10)
         </Button>
       )}
     </div>
@@ -68,17 +74,27 @@ export function StepVoc() {
       <div>
         <h3 className="font-medium mb-1">Customer pain points</h3>
         <p className="text-sm text-muted-foreground mb-3">
-          Paste real customer language. Up to 10 quotes.
+          Real things customers say when something hurts. Paste verbatim from
+          support tickets, calls, reviews, DMs — any source. The AI mirrors
+          this language so the post sounds like it&apos;s coming from someone
+          who&apos;s actually talked to a customer. Up to 10 quotes.
         </p>
-        <QuoteList name="voc_pain_points" />
+        <QuoteList
+          name="voc_pain_points"
+          quotePlaceholder="“My old AC keeps breaking every summer.”"
+        />
       </div>
 
       <div>
         <h3 className="font-medium mb-1">Desired outcomes</h3>
         <p className="text-sm text-muted-foreground mb-3">
-          What customers say they want. Up to 10 quotes.
+          What customers say they want — in their words, not yours. The flip
+          side of pain points. Up to 10 quotes.
         </p>
-        <QuoteList name="voc_desired_outcomes" />
+        <QuoteList
+          name="voc_desired_outcomes"
+          quotePlaceholder="“I want it to just work for 10 years.”"
+        />
       </div>
 
       <FormField
@@ -88,7 +104,8 @@ export function StepVoc() {
           <FormItem>
             <FormLabel>Trigger events</FormLabel>
             <FormDescription>
-              Moments that push someone to look for this brand.
+              Specific moments that push someone to look for this brand. Used
+              when generating timely content. Optional, up to 10.
             </FormDescription>
             <FormControl>
               <TagInput

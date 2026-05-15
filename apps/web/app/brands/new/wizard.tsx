@@ -26,7 +26,6 @@ import { StepWordGuards } from "./steps/step-word-guards";
 import { StepVoc } from "./steps/step-voc";
 import { StepSeo } from "./steps/step-seo";
 import { StepApproval } from "./steps/step-approval";
-import { StepVoiceSamples } from "./steps/step-voice-samples";
 import { StepReview } from "./steps/step-review";
 import { createBrand, type CreateBrandResult } from "./actions";
 
@@ -37,7 +36,6 @@ const STEP_BODY: Record<(typeof STEPS)[number]["id"], React.ComponentType> = {
   voc: StepVoc,
   seo: StepSeo,
   approval: StepApproval,
-  "voice-samples": StepVoiceSamples,
   review: StepReview,
 };
 
@@ -154,16 +152,9 @@ export function BrandWizard() {
                 {pending ? "Creating…" : "Create brand"}
               </Button>
             ) : (
-              <div className="flex items-center gap-2">
-                {"optional" in step && step.optional && (
-                  <Button type="button" variant="ghost" onClick={handleNext}>
-                    Skip
-                  </Button>
-                )}
-                <Button type="button" onClick={handleNext}>
-                  Next
-                </Button>
-              </div>
+              <Button type="button" onClick={handleNext}>
+                Next
+              </Button>
             )}
           </div>
         </CardContent>

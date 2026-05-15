@@ -23,7 +23,10 @@ export function StepWordGuards() {
           <FormItem>
             <FormLabel>Forbidden words</FormLabel>
             <FormDescription>
-              Never use. AI-vocabulary words you have seen and disliked.
+              Words and phrases the AI must never use. Best place to drop
+              corporate clichés you hate (&laquo;leverage&raquo;,
+              &laquo;synergy&raquo;, &laquo;unlock&raquo;). Enter or comma to
+              add. Up to 50.
             </FormDescription>
             <FormControl>
               <TagInput
@@ -45,7 +48,8 @@ export function StepWordGuards() {
           <FormItem>
             <FormLabel>Required phrases</FormLabel>
             <FormDescription>
-              Branded phrases you want to keep appearing.
+              Branded terms or pet phrases the AI should weave in when natural
+              — product names, taglines, your usual signoff. Optional. Up to 20.
             </FormDescription>
             <FormControl>
               <TagInput

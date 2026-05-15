@@ -51,6 +51,14 @@ export function StepReview() {
         <dl>
           <Row label="Brand voice" value={v.brand_voice} />
           <Row label="Tone" value={<List items={v.tone_attributes} />} />
+          <Row
+            label="Voice articles"
+            value={
+              v.voice_samples.length
+                ? `${v.voice_samples.length} article${v.voice_samples.length === 1 ? "" : "s"}`
+                : ""
+            }
+          />
           <Row label="Forbidden" value={<List items={v.forbidden_words} />} />
           <Row label="Required" value={<List items={v.required_phrases} />} />
         </dl>
@@ -83,10 +91,6 @@ export function StepReview() {
         <h3 className="font-medium mb-2">Operations</h3>
         <dl>
           <Row label="Approval mode" value={v.approval_mode} />
-          <Row
-            label="Voice samples"
-            value={v.voice_samples.length ? `${v.voice_samples.length} sample(s)` : ""}
-          />
         </dl>
       </section>
     </div>

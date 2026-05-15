@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { TablesInsert } from "@/lib/supabase/database.types";
-import { WizardSchema, type WizardData } from "./schema";
+import { WizardSchema, normalizeWebsite, type WizardData } from "./schema";
 
 export type CreateBrandResult =
   | { ok: true; brandId: string }
@@ -29,7 +29,7 @@ export async function createBrand(input: WizardData): Promise<CreateBrandResult>
     account_id: user.id,
     name: v.name,
     slug: v.slug,
-    website_url: v.website_url || null,
+    website_url: normalizeWebsite(v.website_url),
     industry: v.industry || null,
     description: v.description || null,
     primary_language: v.primary_language,

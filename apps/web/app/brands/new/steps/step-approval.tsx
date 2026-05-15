@@ -38,6 +38,10 @@ export function StepApproval() {
       name="approval_mode"
       render={({ field }) => (
         <FormItem className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            What happens after the AI generates a post? You can change this
+            anytime in brand settings.
+          </p>
           <FormControl>
             <div className="grid gap-3">
               {OPTIONS.map((opt) => {

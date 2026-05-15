@@ -110,19 +110,25 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // Dataset insert via service-role. Non-fatal: a failed dataset write must
-  // not break the user-visible flow. Sentry will pick this up once wired.
-  const service = createServiceRoleClient();
-  const { error: dsErr } = await service.from("detection_dataset").insert({
-    account_id: brand.account_id,
-    post_id: post.id,
-    text: claude.text,
-    score: detectionScore,
-    source: "generated",
-    pangram_breakdown: pangram,
-  });
-  if (dsErr) {
-    console.error("detection_dataset insert failed:", dsErr.message);
+  // Dataset insert via service-role. Non-fatal: a failed dataset write — or
+  // missing SUPABASE_SERVICE_ROLE_KEY env — must not break the user-visible
+  // flow. Sentry will pick this up once wired.
+  try {
+    const service = createServiceRoleClient();
+    const { error: dsErr } = await service.from("detection_dataset").insert({
+      account_id: brand.account_id,
+      post_id: post.id,
+      text: claude.text,
+      score: detectionScore,
+      source: "generated",
+      pangram_breakdown: pangram,
+    });
+    if (dsErr) {
+      console.error("detection_dataset insert failed:", dsErr.message);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("service-role unavailable, skipping dataset write:", msg);
   }
 
   return Response.json({

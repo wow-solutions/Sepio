@@ -73,12 +73,16 @@ export function WriterClient({ brandId, brandName }: Props) {
     }
 
     if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        stage?: string;
-      };
-      const note = data.stage ? ` (${data.stage})` : "";
-      setError(`${data.error ?? `HTTP ${res.status}`}${note}`);
+      const data = (await res.json().catch(() => null)) as
+        | { error?: unknown; stage?: unknown }
+        | null;
+      const errText =
+        data && typeof data.error === "string" && data.error
+          ? data.error
+          : `HTTP ${res.status}`;
+      const note =
+        data && typeof data.stage === "string" ? ` (${data.stage})` : "";
+      setError(`${errText}${note}`);
       setStage("error");
       return;
     }

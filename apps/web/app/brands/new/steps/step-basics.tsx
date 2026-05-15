@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useFormContext } from "react-hook-form";
 import {
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -29,7 +30,6 @@ export function StepBasics() {
     const currentSlug = getValues("slug");
     const autoSlug = slugify(name ?? "");
     if (!currentSlug || currentSlug === slugify(getValues("name") ?? "")) {
-      // first-time or untouched
       setValue("slug", autoSlug, { shouldValidate: false });
     }
   }, [name, getValues, setValue]);
@@ -42,6 +42,10 @@ export function StepBasics() {
         render={({ field }) => (
           <FormItem>
             <FormLabel>Brand name *</FormLabel>
+            <FormDescription>
+              The display name shown in your dashboard. Can be anything — your
+              company, a product line, a personal channel.
+            </FormDescription>
             <FormControl>
               <Input placeholder="24Clima" {...field} />
             </FormControl>
@@ -56,6 +60,11 @@ export function StepBasics() {
         render={({ field }) => (
           <FormItem>
             <FormLabel>URL slug *</FormLabel>
+            <FormDescription>
+              A short identifier used in URLs. Auto-generated from the brand
+              name — letters, digits, hyphens. You can edit it, but it&apos;s
+              awkward to change later, so keep it short.
+            </FormDescription>
             <FormControl>
               <Input placeholder="24clima" {...field} />
             </FormControl>
@@ -70,8 +79,12 @@ export function StepBasics() {
         render={({ field }) => (
           <FormItem>
             <FormLabel>Website</FormLabel>
+            <FormDescription>
+              Optional. Bare domain works — e.g. <code>24clima.com</code>.
+              We&apos;ll add <code>https://</code> for you.
+            </FormDescription>
             <FormControl>
-              <Input placeholder="https://24clima.com" {...field} />
+              <Input placeholder="24clima.com" {...field} />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -84,8 +97,12 @@ export function StepBasics() {
         render={({ field }) => (
           <FormItem>
             <FormLabel>Industry</FormLabel>
+            <FormDescription>
+              Free text — what business is this? Used to ground the AI when it
+              writes about adjacent topics. Optional.
+            </FormDescription>
             <FormControl>
-              <Input placeholder="HVAC, B2B" {...field} />
+              <Input placeholder="HVAC, B2B distributor" {...field} />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -98,6 +115,10 @@ export function StepBasics() {
         render={({ field }) => (
           <FormItem>
             <FormLabel>Primary language *</FormLabel>
+            <FormDescription>
+              The main language posts will be generated in. You can change it
+              per-post later.
+            </FormDescription>
             <Select onValueChange={field.onChange} value={field.value}>
               <FormControl>
                 <SelectTrigger>
@@ -123,10 +144,14 @@ export function StepBasics() {
         render={({ field }) => (
           <FormItem>
             <FormLabel>One-line description</FormLabel>
+            <FormDescription>
+              Who is this brand for and what does it sell? One sentence is
+              plenty — the AI uses this to stay on-topic.
+            </FormDescription>
             <FormControl>
               <Textarea
                 rows={2}
-                placeholder="B2B HVAC distributor in Panama, focuses on commercial installers."
+                placeholder="B2B HVAC distributor in Panama, focused on commercial installers."
                 {...field}
               />
             </FormControl>
