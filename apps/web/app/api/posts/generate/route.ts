@@ -68,7 +68,7 @@ export async function POST(request: Request): Promise<Response> {
 
   let claude;
   try {
-    claude = await generatePost(config, topic_hint);
+    claude = await generatePost(config, brand.primary_language, topic_hint);
   } catch (err) {
     const msg = err instanceof ClaudeError ? err.message : "Generate failed";
     const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;

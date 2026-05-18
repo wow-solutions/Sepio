@@ -28,20 +28,21 @@ function fixtureConfig(overrides: Partial<BrandConfig> = {}): BrandConfig {
 
 describe("buildBrandContext", () => {
   test("includes brand_voice when present", () => {
-    const ctx = buildBrandContext(fixtureConfig());
+    const ctx = buildBrandContext(fixtureConfig(), "en");
     expect(ctx).toContain("Direct, technical, no fluff.");
   });
 
   test("omits sections when arrays are empty", () => {
     const ctx = buildBrandContext(
       fixtureConfig({ forbidden_words: [], required_phrases: [] }),
+      "en",
     );
     expect(ctx).not.toContain("Never use these words");
     expect(ctx).not.toContain("Weave in if natural");
   });
 
   test("renders forbidden words section", () => {
-    const ctx = buildBrandContext(fixtureConfig());
+    const ctx = buildBrandContext(fixtureConfig(), "en");
     expect(ctx).toContain("Never use these words");
     expect(ctx).toContain("leverage, synergy");
   });
@@ -54,6 +55,7 @@ describe("buildBrandContext", () => {
           { text: "Second sample line." },
         ],
       }),
+      "en",
     );
     expect(ctx).toContain("## Sample 1\nFirst sample line.");
     expect(ctx).toContain("## Sample 2\nSecond sample line.");
@@ -67,14 +69,15 @@ describe("buildBrandContext", () => {
           { quote: "Service is slow." },
         ],
       }),
+      "en",
     );
     expect(ctx).toContain('- "It always breaks in summer."');
     expect(ctx).toContain('- "Service is slow."');
   });
 
   test("output is deterministic — same input produces same string", () => {
-    const a = buildBrandContext(fixtureConfig());
-    const b = buildBrandContext(fixtureConfig());
+    const a = buildBrandContext(fixtureConfig(), "en");
+    const b = buildBrandContext(fixtureConfig(), "en");
     expect(a).toBe(b);
   });
 });
@@ -93,10 +96,10 @@ describe("generatePost — auth & validation", () => {
   });
 
   test("throws ClaudeError when ANTHROPIC_API_KEY missing", async () => {
-    await expect(generatePost(fixtureConfig(), "test")).rejects.toThrow(
+    await expect(generatePost(fixtureConfig(), "en", "test")).rejects.toThrow(
       ClaudeError,
     );
-    await expect(generatePost(fixtureConfig(), "test")).rejects.toThrow(
+    await expect(generatePost(fixtureConfig(), "en", "test")).rejects.toThrow(
       /ANTHROPIC_API_KEY/,
     );
   });
@@ -108,7 +111,7 @@ describe("generatePost — auth & validation", () => {
     // missing-key one).
     let err: unknown;
     try {
-      await generatePost(fixtureConfig(), undefined, {
+      await generatePost(fixtureConfig(), "en", undefined, {
         apiKey: "sk-ant-test-key-not-real",
         signal: AbortSignal.timeout(1),
       });

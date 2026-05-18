@@ -45,9 +45,28 @@ function asArray<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
-export function buildBrandContext(config: BrandConfigRow): string {
+// Map ISO codes to English language names for clear instructions to Claude.
+// Falls through to the code itself for unknown values (defensive default).
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  ru: "Russian",
+  pt: "Portuguese",
+  fr: "French",
+};
+
+export function buildBrandContext(
+  config: BrandConfigRow,
+  primaryLanguage: string,
+): string {
+  const langName = LANGUAGE_NAMES[primaryLanguage] ?? primaryLanguage;
   const parts: string[] = [
     "You write LinkedIn-style posts for a specific brand.",
+    // Language instruction is intentionally near the top — Claude follows
+    // it more reliably than if it were buried. Stated explicitly so the
+    // model ignores the language of the topic hint (which may be entered
+    // in any language by the user).
+    `Write the post in ${langName}, regardless of what language the topic hint is written in.`,
     "Output ONLY the post body. No preamble, no surrounding quotes, no 'Here is...' framing.",
     "Length: 150-250 words. Punchy opener. One concrete idea. Optional question to invite replies.",
   ];
@@ -107,6 +126,7 @@ export function buildBrandContext(config: BrandConfigRow): string {
 
 export async function generatePost(
   config: BrandConfigRow,
+  primaryLanguage: string,
   topicHint: string | undefined,
   opts?: { apiKey?: string; signal?: AbortSignal },
 ): Promise<GenerateResult> {
@@ -117,7 +137,7 @@ export async function generatePost(
 
   const client = new Anthropic({ apiKey });
 
-  const systemText = buildBrandContext(config);
+  const systemText = buildBrandContext(config, primaryLanguage);
   const hint = topicHint?.trim();
   const userText = hint
     ? `Write a post about: ${hint}`

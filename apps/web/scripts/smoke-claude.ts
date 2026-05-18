@@ -25,7 +25,7 @@ const fixture: Tables<"brand_configs"> = {
 };
 
 const start = Date.now();
-const result = await generatePost(fixture, "summer AC maintenance for Panama humidity");
+const result = await generatePost(fixture, "en", "summer AC maintenance for Panama humidity");
 const ms = Date.now() - start;
 
 console.log("---DRAFT---");

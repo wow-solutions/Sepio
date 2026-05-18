@@ -56,7 +56,7 @@ const fixture: Tables<"brand_configs"> = {
 const TOPIC = "подбор кондиционера в комнату в Панаме";
 
 const t0 = Date.now();
-const draft = await generatePost(fixture, TOPIC);
+const draft = await generatePost(fixture, "ru", TOPIC);
 const claudeMs = Date.now() - t0;
 
 const p0 = Date.now();
