@@ -327,19 +327,25 @@ function BrandCard({
         >
           Posts · soon
         </span>
-        <span
-          title="Settings — Sprint 1B"
+        <Link
+          href={`/brands/${brand.id}`}
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 11,
-            color: "var(--ink-faint)",
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            cursor: "not-allowed",
+            height: 28,
+            padding: "0 10px",
+            background: "transparent",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 6,
+            fontSize: 13,
+            fontWeight: 500,
+            color: "var(--ink-muted)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            textDecoration: "none",
           }}
         >
-          Settings · soon
-        </span>
+          Connections →
+        </Link>
       </div>
     </li>
   );

@@ -463,7 +463,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      vault_create_secret: {
+        Args: { p_description?: string; p_name: string; p_secret: Json }
+        Returns: string
+      }
+      vault_delete_secret: { Args: { p_id: string }; Returns: undefined }
+      vault_read_secret: { Args: { p_id: string }; Returns: Json }
+      vault_update_secret: {
+        Args: { p_id: string; p_secret: Json }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
