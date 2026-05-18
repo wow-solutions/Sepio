@@ -42,7 +42,9 @@ type Props = {
 
 export function WriterClient({ brandId, brandName, brandConfig }: Props) {
   const t = useTranslations("writer");
+  const [mode, setMode] = useState<"topic" | "article">("topic");
   const [topic, setTopic] = useState("");
+  const [sourceText, setSourceText] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [originalContent, setOriginalContent] = useState("");
@@ -85,15 +87,27 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     setBreakdown(null);
     setStatus(null);
 
+    const payload: { brand_id: string; topic_hint?: string; source_text?: string } = {
+      brand_id: brandId,
+    };
+    if (mode === "article") {
+      const src = sourceText.trim();
+      if (src.length < 50) {
+        setError(t("articleTooShort"));
+        setStage("error");
+        return;
+      }
+      payload.source_text = src;
+    } else {
+      payload.topic_hint = topic.trim() || undefined;
+    }
+
     let res: Response;
     try {
       res = await fetch("/api/posts/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          brand_id: brandId,
-          topic_hint: topic.trim() || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : t("networkError"));
@@ -261,18 +275,69 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           title={t("prompt")}
           right={
             <span style={mono(11, "var(--ink-faint)")}>
-              {topic.length} / 1000
+              {mode === "article"
+                ? `${sourceText.length} / 30000`
+                : `${topic.length} / 1000`}
             </span>
           }
         >
-          <textarea
-            value={topic}
-            onChange={(e) => setTopic(e.target.value.slice(0, 1000))}
-            disabled={busy}
-            rows={5}
-            placeholder={t("topicPlaceholder", { brand: brandName })}
-            style={inputBase(true)}
-          />
+          {/* Mode toggle */}
+          <div
+            style={{
+              display: "grid",
+              gridAutoFlow: "column",
+              gridAutoColumns: "1fr",
+              background: "var(--surface)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: 6,
+              padding: 2,
+              marginBottom: 10,
+            }}
+          >
+            {(["topic", "article"] as const).map((m) => {
+              const active = mode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  disabled={busy}
+                  style={{
+                    height: 26,
+                    background: active ? "var(--raised)" : "transparent",
+                    border: 0,
+                    color: active ? "var(--ink)" : "var(--ink-muted)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    borderRadius: 4,
+                    cursor: busy ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {t(m === "topic" ? "modeTopic" : "modeArticle")}
+                </button>
+              );
+            })}
+          </div>
+
+          {mode === "article" ? (
+            <textarea
+              value={sourceText}
+              onChange={(e) => setSourceText(e.target.value.slice(0, 30000))}
+              disabled={busy}
+              rows={10}
+              placeholder={t("articlePlaceholder")}
+              style={inputBase(true)}
+            />
+          ) : (
+            <textarea
+              value={topic}
+              onChange={(e) => setTopic(e.target.value.slice(0, 1000))}
+              disabled={busy}
+              rows={5}
+              placeholder={t("topicPlaceholder", { brand: brandName })}
+              style={inputBase(true)}
+            />
+          )}
         </Section>
 
         <Section title={t("channel")}>

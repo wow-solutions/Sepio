@@ -130,6 +130,46 @@ export async function generatePost(
   topicHint: string | undefined,
   opts?: { apiKey?: string; signal?: AbortSignal },
 ): Promise<GenerateResult> {
+  const hint = topicHint?.trim();
+  const userText = hint
+    ? `Write a post about: ${hint}`
+    : "Write a post about something timely and relevant to this brand's audience.";
+  return callClaude(config, primaryLanguage, userText, opts);
+}
+
+// Adapt a longer source (blog article, newsletter, etc.) into a LinkedIn
+// post. Keeps the same brand voice + language + post-length contract as
+// generatePost — the system prompt does all that work, we only swap the
+// user message with the adaptation instruction and the source text.
+export async function adaptToLinkedIn(
+  config: BrandConfigRow,
+  primaryLanguage: string,
+  sourceText: string,
+  opts?: { apiKey?: string; signal?: AbortSignal },
+): Promise<GenerateResult> {
+  const trimmed = sourceText.trim();
+  if (!trimmed) {
+    throw new ClaudeError("source text is empty");
+  }
+  const userText = [
+    "Below is a longer article. Adapt the most interesting idea from it into a single LinkedIn post.",
+    "Pick ONE concrete insight — do not summarize the whole thing. Open with a punchy hook,",
+    "develop the one idea in 2-4 short paragraphs, end with a question or soft CTA.",
+    "Stay in the brand voice from the system prompt. Match the language instruction there.",
+    "Do not include a link to the source article unless the system prompt says to.",
+    "",
+    "SOURCE ARTICLE:",
+    trimmed,
+  ].join("\n");
+  return callClaude(config, primaryLanguage, userText, opts);
+}
+
+async function callClaude(
+  config: BrandConfigRow,
+  primaryLanguage: string,
+  userText: string,
+  opts?: { apiKey?: string; signal?: AbortSignal },
+): Promise<GenerateResult> {
   const apiKey = opts?.apiKey ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new ClaudeError("ANTHROPIC_API_KEY is not configured");
@@ -138,10 +178,6 @@ export async function generatePost(
   const client = new Anthropic({ apiKey });
 
   const systemText = buildBrandContext(config, primaryLanguage);
-  const hint = topicHint?.trim();
-  const userText = hint
-    ? `Write a post about: ${hint}`
-    : "Write a post about something timely and relevant to this brand's audience.";
 
   let response: Anthropic.Message;
   try {

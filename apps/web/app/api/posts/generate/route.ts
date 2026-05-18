@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
-import { generatePost, ClaudeError } from "@/lib/claude";
+import { generatePost, adaptToLinkedIn, ClaudeError } from "@/lib/claude";
 import {
   checkText,
   deriveDetectionScore,
@@ -20,9 +20,13 @@ import {
 //   6. Insert post (status from approval_mode: manual → pending_approval, auto → draft)
 //   7. Insert detection_dataset row via service-role (RLS blocks user direct insert)
 
+// Either topic_hint (generate from prompt) or source_text (adapt longer
+// article into a LinkedIn post). Exactly one should be provided; if both,
+// source_text wins.
 const RequestSchema = z.object({
   brand_id: z.string().uuid(),
   topic_hint: z.string().max(500).optional(),
+  source_text: z.string().min(50).max(30_000).optional(),
 });
 
 type ErrorBody = { error: string; stage?: "generate" | "detection" | "save" };
@@ -46,7 +50,7 @@ export async function POST(request: Request): Promise<Response> {
       400,
     );
   }
-  const { brand_id, topic_hint } = parsed.data;
+  const { brand_id, topic_hint, source_text } = parsed.data;
 
   // Fetch brand + config (RLS prevents reading another user's brand).
   const { data: brand } = await supabase
@@ -68,7 +72,9 @@ export async function POST(request: Request): Promise<Response> {
 
   let claude;
   try {
-    claude = await generatePost(config, brand.primary_language, topic_hint);
+    claude = source_text
+      ? await adaptToLinkedIn(config, brand.primary_language, source_text)
+      : await generatePost(config, brand.primary_language, topic_hint);
   } catch (err) {
     const msg = err instanceof ClaudeError ? err.message : "Generate failed";
     const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
