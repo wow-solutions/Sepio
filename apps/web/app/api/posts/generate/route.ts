@@ -11,22 +11,27 @@ import {
 
 // POST /api/posts/generate
 //
-// Flow (design doc 2026-05-13 §Data flow, ADR-0014):
+// Flow (design doc 2026-05-13 §Data flow, ADR-0014 + sprint 1C D8/D12):
 //   1. Auth check
-//   2. Validate {brand_id, topic_hint?}
+//   2. Validate {brand_id, topic_hint?, source_text?, topic_candidate_id?}
 //   3. Fetch brand + brand_configs (RLS enforces ownership)
-//   4. Claude generates draft
-//   5. Pangram check on draft — CQ-2: on fail, return 503, do NOT save
-//   6. Insert post (status from approval_mode: manual → pending_approval, auto → draft)
-//   7. Insert detection_dataset row via service-role (RLS blocks user direct insert)
+//   4. If topic_candidate_id: fetch candidate (RLS-verified), use topic_text as hint
+//   5. Claude generates draft
+//   6. Pangram check on draft — CQ-2: on fail, return 503, do NOT save
+//   7. Insert post:
+//        - If topic_candidate_id: insert_post_and_mark_candidate RPC (atomic D12)
+//        - Else: direct insert (existing flow, backwards compat)
+//   8. Insert detection_dataset row via service-role (RLS blocks user direct insert)
 
-// Either topic_hint (generate from prompt) or source_text (adapt longer
-// article into a LinkedIn post). Exactly one should be provided; if both,
-// source_text wins.
+// Three input modes (mutual precedence: candidate > source_text > topic_hint):
+//   - topic_candidate_id: pick from /writer top-5, RPC handles atomicity
+//   - source_text: adapt longer article into a LinkedIn post
+//   - topic_hint: legacy free-text input
 const RequestSchema = z.object({
   brand_id: z.string().uuid(),
   topic_hint: z.string().max(500).optional(),
   source_text: z.string().min(50).max(30_000).optional(),
+  topic_candidate_id: z.string().uuid().optional(),
 });
 
 type ErrorBody = { error: string; stage?: "generate" | "detection" | "save" };
@@ -50,7 +55,8 @@ export async function POST(request: Request): Promise<Response> {
       400,
     );
   }
-  const { brand_id, topic_hint, source_text } = parsed.data;
+  const { brand_id, topic_hint, source_text, topic_candidate_id } =
+    parsed.data;
 
   // Fetch brand + config (RLS prevents reading another user's brand).
   const { data: brand } = await supabase
@@ -70,11 +76,41 @@ export async function POST(request: Request): Promise<Response> {
     return jsonError({ error: "Brand config missing", stage: "generate" }, 500);
   }
 
+  // If topic_candidate_id provided, resolve to topic_text (used as topic_hint
+  // for Claude). RLS verifies user owns this brand's candidates.
+  let effectiveTopicHint = topic_hint;
+  let resolvedCandidateText: string | null = null;
+  if (topic_candidate_id) {
+    const { data: candidate, error: candidateErr } = await supabase
+      .from("topic_candidates")
+      .select("id, brand_id, topic_text")
+      .eq("id", topic_candidate_id)
+      .maybeSingle();
+
+    if (candidateErr) {
+      return jsonError(
+        { error: `Candidate fetch failed: ${candidateErr.message}` },
+        500,
+      );
+    }
+    if (!candidate) {
+      return jsonError({ error: "topic_candidate_id not found" }, 404);
+    }
+    if (candidate.brand_id !== brand_id) {
+      return jsonError(
+        { error: "topic_candidate belongs to different brand" },
+        403,
+      );
+    }
+    effectiveTopicHint = candidate.topic_text;
+    resolvedCandidateText = candidate.topic_text;
+  }
+
   let claude;
   try {
     claude = source_text
       ? await adaptToLinkedIn(config, brand.primary_language, source_text)
-      : await generatePost(config, brand.primary_language, topic_hint);
+      : await generatePost(config, brand.primary_language, effectiveTopicHint);
   } catch (err) {
     const msg = err instanceof ClaudeError ? err.message : "Generate failed";
     const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
@@ -93,27 +129,79 @@ export async function POST(request: Request): Promise<Response> {
   const detectionScore = deriveDetectionScore(pangram);
   const initialStatus =
     config.approval_mode === "auto" ? "draft" : "pending_approval";
+  // source_type 'auto_research' когда post came из topic_candidate (cron pool);
+  // 'manual' for free-text topic_hint or source_text adapt.
+  const sourceType: "manual" | "auto_research" = topic_candidate_id
+    ? "auto_research"
+    : "manual";
 
-  const { data: post, error: postErr } = await supabase
-    .from("posts")
-    .insert({
-      brand_id,
-      platform: "linkedin",
-      language: brand.primary_language,
-      content_text: claude.text,
-      detection_score: detectionScore,
-      detection_breakdown: pangram,
-      status: initialStatus,
-      source_type: "manual",
-    })
-    .select("id")
-    .single();
-
-  if (postErr || !post) {
-    return jsonError(
-      { error: postErr?.message ?? "Failed to save post", stage: "save" },
-      500,
+  // Two insert paths:
+  // - With topic_candidate_id: use atomic RPC (D12) — INSERT posts +
+  //   UPDATE topic_candidates.used_at in single transaction. Если update
+  //   fails, post rollback'ит (no orphan, no duplicate impressions).
+  // - Without candidate: direct insert (existing flow, backwards-compat).
+  let postId: string;
+  if (topic_candidate_id) {
+    const { data: rpcPost, error: rpcErr } = await supabase.rpc(
+      "insert_post_and_mark_candidate",
+      {
+        p_brand_id: brand_id,
+        p_platform: "linkedin",
+        p_language: brand.primary_language,
+        p_content_text: claude.text,
+        p_detection_score: detectionScore,
+        p_detection_breakdown: pangram,
+        p_status: initialStatus,
+        p_source_type: sourceType,
+        p_candidate_id: topic_candidate_id,
+        p_research_topic: resolvedCandidateText ?? undefined,
+      },
     );
+
+    if (rpcErr || !rpcPost) {
+      return jsonError(
+        {
+          error: rpcErr?.message ?? "Failed to save post (RPC)",
+          stage: "save",
+        },
+        500,
+      );
+    }
+    // RPC returns posts row (SetofOptions.isOneToOne=true in generated types).
+    // supabase-js infers SetOf even with isOneToOne — cast to known shape.
+    const row = Array.isArray(rpcPost)
+      ? (rpcPost[0] as { id: string } | undefined)
+      : (rpcPost as { id: string });
+    if (!row?.id) {
+      return jsonError(
+        { error: "RPC returned no post id", stage: "save" },
+        500,
+      );
+    }
+    postId = row.id;
+  } else {
+    const { data: post, error: postErr } = await supabase
+      .from("posts")
+      .insert({
+        brand_id,
+        platform: "linkedin",
+        language: brand.primary_language,
+        content_text: claude.text,
+        detection_score: detectionScore,
+        detection_breakdown: pangram,
+        status: initialStatus,
+        source_type: sourceType,
+      })
+      .select("id")
+      .single();
+
+    if (postErr || !post) {
+      return jsonError(
+        { error: postErr?.message ?? "Failed to save post", stage: "save" },
+        500,
+      );
+    }
+    postId = post.id;
   }
 
   // Dataset insert via service-role. Non-fatal: a failed dataset write — or
@@ -123,7 +211,7 @@ export async function POST(request: Request): Promise<Response> {
     const service = createServiceRoleClient();
     const { error: dsErr } = await service.from("detection_dataset").insert({
       account_id: brand.account_id,
-      post_id: post.id,
+      post_id: postId,
       text: claude.text,
       score: detectionScore,
       source: "generated",
@@ -138,7 +226,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   return Response.json({
-    post_id: post.id,
+    post_id: postId,
     content: claude.text,
     detection_score: detectionScore,
     detection_breakdown: pangram,

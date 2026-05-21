@@ -458,11 +458,139 @@ export type Database = {
           },
         ]
       }
+      topic_candidates: {
+        Row: {
+          brand_id: string
+          created_at: string
+          degraded_run: boolean
+          expires_at: string
+          freshness_score: number | null
+          id: string
+          impressions_count: number
+          last_shown_at: string | null
+          post_id: string | null
+          score: number | null
+          source: string
+          source_metadata: Json
+          topic_text: string
+          used_at: string | null
+        }
+        Insert: {
+          brand_id: string
+          created_at?: string
+          degraded_run?: boolean
+          expires_at?: string
+          freshness_score?: number | null
+          id?: string
+          impressions_count?: number
+          last_shown_at?: string | null
+          post_id?: string | null
+          score?: number | null
+          source: string
+          source_metadata?: Json
+          topic_text: string
+          used_at?: string | null
+        }
+        Update: {
+          brand_id?: string
+          created_at?: string
+          degraded_run?: boolean
+          expires_at?: string
+          freshness_score?: number | null
+          id?: string
+          impressions_count?: number
+          last_shown_at?: string | null
+          post_id?: string | null
+          score?: number | null
+          source?: string
+          source_metadata?: Json
+          topic_text?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_candidates_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_candidates_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      increment_topic_impressions: {
+        Args: { p_candidate_ids: string[] }
+        Returns: undefined
+      }
+      filter_unused_topic_texts: {
+        Args: {
+          p_brand_id: string
+          p_candidate_texts: string[]
+          p_history_limit?: number
+          p_threshold?: number
+        }
+        Returns: string[]
+      }
+      insert_post_and_mark_candidate: {
+        Args: {
+          p_brand_id: string
+          p_candidate_id?: string
+          p_content_text: string
+          p_detection_breakdown: Json
+          p_detection_score: number
+          p_language: string
+          p_platform: string
+          p_research_topic?: string
+          p_source_type: string
+          p_status: string
+        }
+        Returns: {
+          approved_at: string | null
+          approved_by: string | null
+          brand_id: string
+          content_markdown: string | null
+          content_text: string | null
+          cover_image_url: string | null
+          created_at: string
+          cta_url: string | null
+          detection_breakdown: Json | null
+          detection_score: number | null
+          external_post_id: string | null
+          external_post_url: string | null
+          hashtags: string[] | null
+          id: string
+          image_generation_method: string | null
+          inline_image_urls: string[] | null
+          language: string
+          metrics: Json | null
+          metrics_updated_at: string | null
+          platform: string
+          published_at: string | null
+          research_keywords: string[] | null
+          research_topic: string | null
+          scheduled_for: string | null
+          source_type: string
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "posts"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       vault_create_secret: {
         Args: { p_description?: string; p_name: string; p_secret: Json }
         Returns: string

@@ -3,6 +3,12 @@
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { saveDraft } from "./actions";
+import { TopicPicker } from "./_components/topic-picker";
+
+type PickedTopic = {
+  id: string;
+  topic_text: string;
+};
 
 type GenerateResponse = {
   post_id: string;
@@ -54,6 +60,10 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
   // Snapshot of content before last humanize — drives the Undo button.
   const [humanizeSnapshot, setHumanizeSnapshot] = useState<string | null>(null);
+  // Topic picker state — sprint 1C Lane F.
+  const [pickedTopic, setPickedTopic] = useState<PickedTopic | null>(null);
+  // Increment to trigger TopicPicker re-fetch (e.g. after generate consumes a card).
+  const [topicsRefreshKey, setTopicsRefreshKey] = useState(0);
 
   const voiceShort = shortenVoice(brandConfig.brandVoice);
   const toneTop = truncateList(brandConfig.toneAttributes, 4);
@@ -80,7 +90,12 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     setPostId(null);
     setStatus(null);
 
-    const payload: { brand_id: string; topic_hint?: string; source_text?: string } = {
+    const payload: {
+      brand_id: string;
+      topic_hint?: string;
+      source_text?: string;
+      topic_candidate_id?: string;
+    } = {
       brand_id: brandId,
     };
     if (mode === "article") {
@@ -91,6 +106,10 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
         return;
       }
       payload.source_text = src;
+    } else if (pickedTopic) {
+      // Picker selected — backend uses topic_text from candidate, marks used_at
+      // atomically via insert_post_and_mark_candidate RPC.
+      payload.topic_candidate_id = pickedTopic.id;
     } else {
       payload.topic_hint = topic.trim() || undefined;
     }
@@ -132,6 +151,13 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     if (!title) {
       const firstLine = data.content.split("\n").find((l) => l.trim()) ?? "";
       setTitle(firstLine.slice(0, 80));
+    }
+    // If the post was generated from a topic candidate, the backend marked it
+    // used_at — refresh picker so the consumed card disappears and the next
+    // pool candidate becomes visible. Clear local selection too.
+    if (pickedTopic) {
+      setPickedTopic(null);
+      setTopicsRefreshKey((k) => k + 1);
     }
   }
 
@@ -194,6 +220,18 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     if (humanizeSnapshot === null) return;
     setContent(humanizeSnapshot);
     setHumanizeSnapshot(null);
+  }
+
+  // Topic picker selection. Picking auto-fills the prompt textarea (transparency
+  // — юзер видит что отправляется в Claude). Deselecting (passing null) leaves
+  // the textarea content alone — user may want to keep editing it.
+  function handleTopicSelect(topic: PickedTopic | null) {
+    setPickedTopic(topic);
+    if (topic) {
+      setTopic(topic.topic_text);
+      // Make sure mode is "topic" — picking a card в article-mode would be weird.
+      if (mode !== "topic") setMode("topic");
+    }
   }
 
   async function onPublish() {
@@ -304,6 +342,18 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           )}
         </CollapsibleSection>
 
+        <TopicPicker
+          brandId={brandId}
+          selectedId={pickedTopic?.id ?? null}
+          onSelect={(t) =>
+            handleTopicSelect(
+              t ? { id: t.id, topic_text: t.topic_text } : null,
+            )
+          }
+          refreshKey={topicsRefreshKey}
+          disabled={busy}
+        />
+
         <Section
           title={t("prompt")}
           right={
@@ -364,7 +414,12 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           ) : (
             <textarea
               value={topic}
-              onChange={(e) => setTopic(e.target.value.slice(0, 1000))}
+              onChange={(e) => {
+                setTopic(e.target.value.slice(0, 1000));
+                // User editing после picking → их текст выигрывает; deselect
+                // картu so backend uses topic_hint, не candidate_id.
+                if (pickedTopic) setPickedTopic(null);
+              }}
               disabled={busy}
               rows={5}
               placeholder={t("topicPlaceholder", { brand: brandName })}

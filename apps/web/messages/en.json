@@ -184,6 +184,19 @@
       "list": "List",
       "link": "Link",
       "editorSoon": "Tiptap · Sprint 2"
+    },
+    "topicPicker": {
+      "title": "Today's topics",
+      "helper": "Pick one — or leave unselected to write your own.",
+      "loading": "Loading topics…",
+      "empty": "No topics yet. We're researching — check back in ~10 minutes.",
+      "emptyHint": "Daily research runs at 06:00 UTC.",
+      "refresh": "Refresh",
+      "sourceWeb": "Web",
+      "sourceDataforSeo": "Trends",
+      "sourceVoc": "From your data",
+      "selected": "Selected",
+      "errorFallback": "Couldn't load topics. Refresh to retry."
     }
   },
   "posts": {
