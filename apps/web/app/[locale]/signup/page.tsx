@@ -167,26 +167,26 @@ export default async function SignupPage({ searchParams }: PageProps) {
         >
           {t.rich("legal", {
             terms: (chunks) => (
-              <a
-                href="https://github.com/wow-solutions/Quoteworthy/blob/main/docs/terms.md"
+              <Link
+                href="/terms"
                 style={{
                   color: "var(--ink-muted)",
                   textDecoration: "underline",
                 }}
               >
                 {chunks}
-              </a>
+              </Link>
             ),
             privacy: (chunks) => (
-              <a
-                href="https://github.com/wow-solutions/Quoteworthy/blob/main/docs/privacy.md"
+              <Link
+                href="/privacy"
                 style={{
                   color: "var(--ink-muted)",
                   textDecoration: "underline",
                 }}
               >
                 {chunks}
-              </a>
+              </Link>
             ),
           })}
         </p>

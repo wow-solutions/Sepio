@@ -115,6 +115,7 @@
   "landing": {
     "header": {
       "preAlpha": "пре-альфа",
+      "pricing": "Цены",
       "login": "Войти",
       "signup": "Регистрация"
     },

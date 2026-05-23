@@ -68,6 +68,9 @@ async function Header() {
           fontSize: 13,
         }}
       >
+        <Link href="/pricing" style={{ color: "var(--ink-muted)" }}>
+          {t("pricing")}
+        </Link>
         <a
           href="https://github.com/wow-solutions/Quoteworthy"
           style={{ color: "var(--ink-muted)" }}
@@ -288,19 +291,19 @@ async function Footer() {
       }}
     >
       {t("license")} ·{" "}
-      <a
-        href="https://github.com/wow-solutions/Quoteworthy/blob/main/docs/privacy.md"
+      <Link
+        href="/privacy"
         style={{ color: "var(--ink-faint)" }}
       >
         {t("privacy")}
-      </a>{" "}
+      </Link>{" "}
       ·{" "}
-      <a
-        href="https://github.com/wow-solutions/Quoteworthy/blob/main/docs/terms.md"
+      <Link
+        href="/terms"
         style={{ color: "var(--ink-faint)" }}
       >
         {t("terms")}
-      </a>
+      </Link>
     </footer>
   );
 }

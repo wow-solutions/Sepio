@@ -115,6 +115,7 @@
   "landing": {
     "header": {
       "preAlpha": "pre-alpha",
+      "pricing": "Pricing",
       "login": "Log in",
       "signup": "Sign up"
     },
