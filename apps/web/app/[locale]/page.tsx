@@ -161,22 +161,6 @@ export default async function HomePage({
         </div>
       </section>
 
-      {/* LOGO STRIP */}
-      <section className="logos">
-        <div className="container">
-          <div className="lh">{C.logosHeading}</div>
-          <div className="lrow">
-            <span className="sans">PARALLAX</span>
-            <span className="italic">Northwind &amp; Co.</span>
-            <span className="mono">arctype.io</span>
-            <span>Modello</span>
-            <span className="sans">ANCHOR</span>
-            <span className="italic">Field Notes</span>
-            <span className="mono">post.market</span>
-          </div>
-        </div>
-      </section>
-
       {/* HOW IT WORKS */}
       <section className="section" id="how">
         <div className="container">
