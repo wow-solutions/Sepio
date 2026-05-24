@@ -6,7 +6,7 @@ import { BrandWizard } from "./wizard";
 
 export async function generateMetadata() {
   const t = await getTranslations("wizard.shell");
-  return { title: `${t("title")} — Quoteworthy` };
+  return { title: `${t("title")} — Sepio` };
 }
 
 export default async function NewBrandPage() {

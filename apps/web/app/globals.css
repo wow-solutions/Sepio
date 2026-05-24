@@ -6,9 +6,8 @@
 @custom-variant dark (&:is(.dark *));
 
 /* =========================================================================
-   QUOTEWORTHY — Tailwind v4 @theme bindings
-   Source: raw/design/2026-05-15-quoteworthy-ui-handoff/tokens.css
-   See ADR-0015 for migration rationale.
+   SEPIO — Tailwind v4 @theme bindings
+   Brand palette: design_handoff_sepio_brand (v1, 2026-05-23). See ADR-0015/0020.
    ========================================================================= */
 @theme inline {
   /* HANDOFF color tokens — utilities bg-bg, text-ink, border-border-strong */
@@ -72,9 +71,9 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   /* Fonts — variables set by next/font/google в layout.tsx */
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --font-sans: var(--font-onest), ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --font-serif: var(--font-newsreader), "Times New Roman", Georgia, serif;
+  --font-serif: var(--font-fraunces), "Times New Roman", Georgia, serif;
 
   /* Type scale (px) */
   --text-display: 56px;
@@ -129,11 +128,11 @@
   --editor-max-w: 720px;
 }
 
-/* Newsreader не содержит кириллицу — для русского fallback на Times New Roman
-   выглядит коряво. Переключаемся на sans-serif (Geist) для serif-контекстов
+/* Fraunces не содержит кириллицу — для русского fallback на Times New Roman
+   выглядит коряво. Переключаемся на sans-serif (Onest) для serif-контекстов
    когда документ на русском. Italic style preserved через CSS font-style. */
 :lang(ru) {
-  --font-serif: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
 }
 
 /* =========================================================================
@@ -141,18 +140,29 @@
    ========================================================================= */
 :root,
 .dark {
-  /* HANDOFF dark values */
-  --bg: #0B0B0B;
-  --surface: #131313;
-  --raised: #1B1B1B;
-  --overlay: #232323;
-  --ink: #ECEAE6;
-  --ink-muted: #97948C;
-  --ink-faint: #61605B;
-  --ink-inverted: #0A1628;
+  /* ── Sepio brand palette (raw) — source of truth, design_handoff_sepio_brand v1 ── */
+  --sepio-sepia:        #6B4226;   /* primary anchor — CTA fills */
+  --sepio-sepia-bright: #B07B50;   /* on-dark accent, italic glow, the "o", endpoint dots */
+  --sepio-sepia-deep:   #4A2C19;   /* darker sepia for gradient mixes */
+  --sepio-ink:          #1C1815;   /* deep ink — type on cream, dark tile fill */
+  --sepio-cream:        #F3ECE1;   /* paper, text on dark */
+  --sepio-surface:      #181410;   /* primary dark page surface */
+  --sepio-surface-elev: #221C16;   /* elevated cards on dark */
+  --sepio-surface-soft: #1F1812;   /* alt section background */
+  --sepio-surface-deep: #120F0C;   /* deepest surfaces, product chrome */
 
-  --brand: #10B981;
-  --brand-ink: #0A1628;
+  /* Semantic dark tokens — remapped onto the sepia palette (was neutral grey) */
+  --bg: var(--sepio-surface);
+  --surface: var(--sepio-surface-soft);
+  --raised: var(--sepio-surface-elev);
+  --overlay: var(--sepio-surface-elev);
+  --ink: var(--sepio-cream);
+  --ink-muted: #A09687;            /* sepio on-dark-soft */
+  --ink-faint: #6E655A;            /* sepio on-dark-faint */
+  --ink-inverted: var(--sepio-ink);
+
+  --brand: var(--sepio-sepia-bright);  /* visible accent on dark */
+  --brand-ink: var(--sepio-ink);       /* type on a bright-sepia fill */
 
   --pass: #7AA079;
   --pass-bg: rgba(122, 160, 121, 0.10);
@@ -166,9 +176,9 @@
   --info: #6E8FA8;
   --info-bg: rgba(110, 143, 168, 0.10);
 
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --focus-ring: rgba(195, 232, 211, 0.45);
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --focus-ring: rgba(176, 123, 80, 0.50);
 
   --status-draft: #97948C;
   --status-approved: #7AA079;
@@ -278,6 +288,19 @@
   html {
     @apply font-sans;
   }
+  /* Page titles in Fraunces (display serif) — the app's editorial voice, so the
+     product reads as the same world as the landing. Body/UI stays Onest. Only
+     <h1> (large page titles); their inline styles don't set font-family, so this
+     wins. Landing headings use .display-* (higher specificity) and are unaffected.
+     Bound to --font-fraunces directly (not --font-serif) so RU titles render
+     serif like the landing, bypassing the :lang(ru) Onest override. */
+  h1, h2, h3 {
+    font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  }
+  h1 {
+    font-variation-settings: "opsz" 40;
+    letter-spacing: -0.02em;
+  }
   a { color: inherit; text-decoration: none; }
   :focus-visible {
     outline: 2px solid var(--focus-ring);
@@ -285,7 +308,7 @@
     border-radius: 4px;
   }
   ::selection {
-    background: rgba(122, 160, 121, 0.30);
+    background: rgba(176, 123, 80, 0.30);
     color: var(--ink);
   }
 

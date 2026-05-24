@@ -6,7 +6,7 @@ import { buildAuthorizeUrl, encodeState, LinkedInOAuthError } from "@/lib/linked
 //
 // Start of LinkedIn OAuth flow (ADR-0017 D6, deliverable 9.2).
 //
-// 1. Auth check (must be signed in to Quoteworthy)
+// 1. Auth check (must be signed in to Sepio)
 // 2. Verify brand_id belongs to this user (RLS-scoped read)
 // 3. Build HMAC-signed state (encodes brand_id + timestamp; stateless —
 //    no cookie needed, signature itself proves authenticity)

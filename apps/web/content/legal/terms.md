@@ -3,7 +3,7 @@
 **Effective date:** 2026-05-11
 **Status:** Pre-alpha. These terms will be updated before public beta launch.
 
-These Terms of Service ("Terms") govern your use of the Quoteworthy
+These Terms of Service ("Terms") govern your use of the Sepio
 platform ("Service") operated by WoW Solutions / Grigoriy Baranchuk
 ("we", "us"). By creating an account or using the Service, you agree to
 these Terms.
@@ -14,14 +14,14 @@ Contact: **grigoriy.baranchuk@gmail.com**.
 
 ## 1. The Service
 
-Quoteworthy is a content automation platform for marketing consultants
+Sepio is a content automation platform for marketing consultants
 and agencies. The Service allows you to configure brand voice,
 generate AI-assisted content, schedule and publish posts to connected
 social platforms, and track engagement.
 
 The hosted Service runs the same source code that is available as
 open-source under the Apache License 2.0 at
-[github.com/wow-solutions/Quoteworthy](https://github.com/wow-solutions/Quoteworthy).
+[github.com/wow-solutions/Sepio](https://github.com/wow-solutions/Sepio).
 You may self-host the Service under the Apache 2.0 license at any
 time.
 
@@ -52,7 +52,7 @@ We may suspend or terminate accounts that violate this section.
 ## 4. Connected third-party platforms
 
 When you connect a social platform (LinkedIn, Facebook, Instagram, X,
-WordPress, Webflow, Shopify) to a brand, you authorize Quoteworthy to
+WordPress, Webflow, Shopify) to a brand, you authorize Sepio to
 act on your behalf within the scopes you grant. You remain solely
 responsible for:
 - Compliance with the connected platform's terms of service
@@ -77,7 +77,7 @@ human-in-the-loop approval flow.
 
 ## 6. Our intellectual property
 
-- The Quoteworthy name, logo, and branding are our property.
+- The Sepio name, logo, and branding are our property.
 - The Service software is licensed under Apache 2.0 (see the LICENSE
   file in the repository).
 - Hosted-only features (managed infrastructure, billing UI, support)
@@ -165,4 +165,4 @@ consumer protection law.
 ## 16. Contact
 
 **Email:** grigoriy.baranchuk@gmail.com
-**GitHub:** [github.com/wow-solutions/Quoteworthy](https://github.com/wow-solutions/Quoteworthy)
+**GitHub:** [github.com/wow-solutions/Sepio](https://github.com/wow-solutions/Sepio)

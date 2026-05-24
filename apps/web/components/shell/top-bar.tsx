@@ -1,5 +1,6 @@
 import { Link } from "@/i18n/navigation";
-import { QuoteworthyMark } from "./quoteworthy-mark";
+import { SepioMark } from "./sepio-mark";
+import { Wordmark } from "./wordmark";
 import { BrandSwitcher, type BrandOption } from "@/components/brand/brand-switcher";
 import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
 
@@ -46,17 +47,8 @@ export function TopBar({
           height: 32,
         }}
       >
-        <QuoteworthyMark size={28} />
-        <span
-          style={{
-            fontSize: 14,
-            fontWeight: 600,
-            letterSpacing: "-0.015em",
-            color: "var(--ink)",
-          }}
-        >
-          Quoteworthy
-        </span>
+        <SepioMark size={28} />
+        <Wordmark size={15} />
       </Link>
 
       <BrandSwitcher brands={brands} currentBrandId={currentBrandId} />
@@ -122,7 +114,8 @@ export function TopBar({
             width: 28,
             height: 28,
             borderRadius: "50%",
-            background: "linear-gradient(135deg, #6E8FA8, #4A6F8F)",
+            background:
+              "linear-gradient(135deg, var(--sepio-sepia-bright), var(--sepio-sepia))",
             display: "grid",
             placeItems: "center",
             fontSize: 11,

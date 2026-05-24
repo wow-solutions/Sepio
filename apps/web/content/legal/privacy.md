@@ -3,7 +3,7 @@
 **Effective date:** 2026-05-11
 **Status:** Pre-alpha. This policy will be updated before public beta launch.
 
-Quoteworthy ("we", "us", "our") operates the Quoteworthy platform — an
+Sepio ("we", "us", "our") operates the Sepio platform — an
 open-source content automation service for marketing consultants. This
 Privacy Policy explains what data we collect, how we use it, and the
 choices you have.
@@ -14,11 +14,11 @@ If you have any questions, contact us at **grigoriy.baranchuk@gmail.com**.
 
 ## 1. Who we are
 
-Quoteworthy is operated by WoW Solutions / Grigoriy Baranchuk
+Sepio is operated by WoW Solutions / Grigoriy Baranchuk
 (Panama). The hosted product runs on managed cloud infrastructure
 (Vercel, Supabase, Railway, AWS). The same source code is also
 available as open-source at
-[github.com/wow-solutions/Quoteworthy](https://github.com/wow-solutions/Quoteworthy)
+[github.com/wow-solutions/Sepio](https://github.com/wow-solutions/Sepio)
 for self-hosting.
 
 ## 2. Data we collect
@@ -136,7 +136,7 @@ law.
 
 ## 8. Children's privacy
 
-Quoteworthy is not directed at children under 16. We do not knowingly
+Sepio is not directed at children under 16. We do not knowingly
 collect data from children.
 
 ## 9. International transfers
@@ -152,4 +152,4 @@ We will post any changes to this policy on this page and update the
 ## 11. Contact
 
 **Email:** grigoriy.baranchuk@gmail.com
-**GitHub:** [github.com/wow-solutions/Quoteworthy](https://github.com/wow-solutions/Quoteworthy)
+**GitHub:** [github.com/wow-solutions/Sepio](https://github.com/wow-solutions/Sepio)

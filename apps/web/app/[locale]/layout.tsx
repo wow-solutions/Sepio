@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Newsreader } from "next/font/google";
+import { Fraunces, Onest, Geist_Mono } from "next/font/google";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
 import "../globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Body + UI. Variable font; has a cyrillic subset, so Russian UI renders correctly.
+const onest = Onest({
+  variable: "--font-onest",
   subsets: ["latin", "cyrillic"],
-  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -18,17 +18,20 @@ const geistMono = Geist_Mono({
   weight: ["400", "500", "600"],
 });
 
-// Newsreader has no cyrillic subset — falls back to system serif on Russian text.
-const newsreader = Newsreader({
-  variable: "--font-newsreader",
+// Display. Variable font with optical-size axis (opsz 9–144) + italic — the brand's
+// signature emphasis. No cyrillic subset, so Russian display text falls back to Onest
+// via the :lang(ru) override in globals.css (same behaviour as the old Newsreader).
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
-  weight: ["400"],
-  style: ["italic"],
+  axes: ["opsz"],
+  style: ["normal", "italic"],
 });
 
 export const metadata: Metadata = {
-  title: "Quoteworthy",
-  description: "AI content that passes detection — for boutique agencies.",
+  metadataBase: new URL("https://sepio.app"),
+  title: "Sepio",
+  description: "One brand. Every feed. On schedule.",
 };
 
 export function generateStaticParams() {
@@ -51,7 +54,7 @@ export default async function LocaleLayout({
   return (
     <html
       lang={locale}
-      className={`dark ${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
+      className={`dark ${onest.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>{children}</NextIntlClientProvider>

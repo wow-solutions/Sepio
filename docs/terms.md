@@ -1,7 +1,7 @@
 # Terms of Service
 
 > **Moved.** The Terms of Service are now hosted at
-> [quoteworthy.com/terms](https://quoteworthy.com/terms) (live)
+> [sepio.com/terms](https://sepio.com/terms) (live)
 > and maintained at `apps/web/content/legal/terms.md` in this repository.
 >
 > This file is preserved as a redirect stub so older external links do

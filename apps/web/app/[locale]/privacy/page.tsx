@@ -3,7 +3,7 @@ import { MarkdownPage } from "@/components/legal/markdown-page";
 import { LegalShell } from "./shell";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Quoteworthy",
+  title: "Privacy Policy — Sepio",
 };
 
 export default function PrivacyPolicyPage() {

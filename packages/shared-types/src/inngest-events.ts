@@ -91,7 +91,7 @@ export type SystemUsageCountersResetEvent = {
   data: { period_start: string };
 };
 
-export type QuoteworthyEvent =
+export type SepioEvent =
   | BrandCreatedEvent
   | BrandWizardCompletedEvent
   | PostResearchRequestedEvent
@@ -106,4 +106,4 @@ export type QuoteworthyEvent =
   | BillingSubscriptionCancelledEvent
   | SystemUsageCountersResetEvent;
 
-export type EventName = QuoteworthyEvent["name"];
+export type EventName = SepioEvent["name"];

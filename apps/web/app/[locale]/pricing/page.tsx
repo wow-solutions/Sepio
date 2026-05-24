@@ -3,7 +3,7 @@ import { Link } from "@/i18n/navigation";
 import { LegalShell } from "../privacy/shell";
 
 export const metadata: Metadata = {
-  title: "Pricing — Quoteworthy",
+  title: "Pricing — Sepio",
   description:
     "Content automation for solo consultants and boutique agencies. Plans from $49 to $399.",
 };

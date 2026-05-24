@@ -1,5 +1,6 @@
 import { Link } from "@/i18n/navigation";
-import { QuoteworthyMark } from "@/components/shell/quoteworthy-mark";
+import { SepioMark } from "@/components/shell/sepio-mark";
+import { Wordmark } from "@/components/shell/wordmark";
 
 export function LegalShell({ children }: { children: React.ReactNode }) {
   return (
@@ -24,8 +25,8 @@ export function LegalShell({ children }: { children: React.ReactNode }) {
             color: "var(--ink)",
           }}
         >
-          <QuoteworthyMark size={28} />
-          <span style={{ fontWeight: 600, fontSize: 16 }}>Quoteworthy</span>
+          <SepioMark size={28} />
+          <Wordmark size={17} />
         </Link>
       </header>
 

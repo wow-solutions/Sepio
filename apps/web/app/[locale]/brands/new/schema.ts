@@ -113,7 +113,7 @@ export const STEPS = [
 
 export type StepId = (typeof STEPS)[number]["id"];
 
-export const WIZARD_DRAFT_KEY = "quoteworthy.brand-wizard.v1";
+export const WIZARD_DRAFT_KEY = "sepio.brand-wizard.v1";
 
 export const wizardDefaults: WizardData = {
   name: "",

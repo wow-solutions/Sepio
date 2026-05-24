@@ -3,6 +3,7 @@
     "languageSwitch": {
       "label": "Language",
       "en": "English",
+      "es": "Español",
       "ru": "Русский"
     }
   },
@@ -123,7 +124,7 @@
       "eyebrow": "Content automation, in your voice",
       "h1": "Your voice. Every platform. On schedule.",
       "tagline": "One idea, every platform, in your voice.",
-      "body": "Quoteworthy turns one idea into platform-fit posts in your brand voice — LinkedIn long-form, Twitter threads, blog posts — and ships them on the schedule you set. Pennies per post.",
+      "body": "Sepio turns one idea into platform-fit posts in your brand voice — LinkedIn long-form, Twitter threads, blog posts — and ships them on the schedule you set. Pennies per post.",
       "signup": "Sign up",
       "alreadyHave": "Already have an account →"
     },
@@ -133,7 +134,7 @@
       "stat1": { "number": "2 → 15", "label": "posts/month after automation" },
       "stat2": { "number": "8×", "label": "site impressions, month one" },
       "stat3": { "number": "$0.18", "label": "cost per article" },
-      "body": "Service-business founders pick operations over content every Monday. The blank page always loses. We hit this at our own HVAC business in Panama, then built the engine: one source idea → platform-fit drafts → scheduled publish. Quoteworthy is that engine."
+      "body": "Service-business founders pick operations over content every Monday. The blank page always loses. We hit this at our own HVAC business in Panama, then built the engine: one source idea → platform-fit drafts → scheduled publish. Sepio is that engine."
     },
     "how": {
       "eyebrow": "How it works",

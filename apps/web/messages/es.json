@@ -1,0 +1,10 @@
+{
+  "common": {
+    "languageSwitch": {
+      "label": "Idioma",
+      "en": "English",
+      "es": "Español",
+      "ru": "Русский"
+    }
+  }
+}

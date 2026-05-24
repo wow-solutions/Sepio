@@ -3,7 +3,8 @@ import { Link } from "@/i18n/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { QuoteworthyMark } from "@/components/shell/quoteworthy-mark";
+import { SepioMark } from "@/components/shell/sepio-mark";
+import { Wordmark } from "@/components/shell/wordmark";
 import { login } from "./actions";
 
 type PageProps = {
@@ -48,17 +49,8 @@ export default async function LoginPage({ searchParams }: PageProps) {
             marginBottom: 28,
           }}
         >
-          <QuoteworthyMark size={32} />
-          <span
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              letterSpacing: "-0.015em",
-              color: "var(--ink)",
-            }}
-          >
-            Quoteworthy
-          </span>
+          <SepioMark size={32} />
+          <Wordmark size={18} />
         </div>
 
         <h1

@@ -3,7 +3,7 @@ import { MarkdownPage } from "@/components/legal/markdown-page";
 import { LegalShell } from "../privacy/shell";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — Quoteworthy",
+  title: "Terms of Service — Sepio",
 };
 
 export default function TermsOfServicePage() {
