@@ -200,11 +200,12 @@ export function PostsList({ posts, locale }: Props) {
           return (
             <li
               key={p.id}
+              className="posts-row"
               style={{
-                background: isSelected ? "var(--raised)" : "var(--surface)",
-                border: `1px solid ${isSelected ? "var(--ink-muted)" : "var(--border-subtle)"}`,
-                borderRadius: 8,
-                padding: "14px 16px",
+                background: "var(--raised)",
+                border: `1px solid ${isSelected ? "var(--brand)" : "var(--border-subtle)"}`,
+                borderRadius: 10,
+                padding: "16px 18px",
                 display: "flex",
                 gap: 12,
                 alignItems: "flex-start",

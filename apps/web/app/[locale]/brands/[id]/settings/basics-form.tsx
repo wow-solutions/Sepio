@@ -86,9 +86,12 @@ export function BasicsForm({
         <label
           style={{
             display: "block",
-            fontSize: 13,
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
             fontWeight: 500,
-            color: "var(--ink)",
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ink-faint)",
             marginBottom: 6,
           }}
         >
@@ -117,9 +120,12 @@ export function BasicsForm({
         <label
           style={{
             display: "block",
-            fontSize: 13,
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
             fontWeight: 500,
-            color: "var(--ink)",
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ink-faint)",
             marginBottom: 6,
           }}
         >
@@ -159,9 +165,12 @@ export function BasicsForm({
         <label
           style={{
             display: "block",
-            fontSize: 13,
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
             fontWeight: 500,
-            color: "var(--ink)",
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ink-faint)",
             marginBottom: 6,
           }}
         >

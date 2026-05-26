@@ -2,8 +2,10 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { TopBar } from "@/components/shell/top-bar";
+import { AppShell } from "@/components/shell/app-shell";
 import type { BrandOption } from "@/components/brand/brand-switcher";
+import { BrandDot } from "@/components/brand/brand-dot";
+import { brandColor } from "@/lib/brand-color";
 import { PostsList, type PostRow } from "./posts-list";
 
 type PageProps = {
@@ -37,6 +39,12 @@ export default async function PostsPage({ searchParams }: PageProps) {
 
   const brands = brandsList ?? [];
   const brandById = new Map(brands.map((b) => [b.id, b]));
+
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("display_name, plan_tier, plan_status, trial_ends_at")
+    .eq("id", user.id)
+    .maybeSingle();
 
   let q = supabase
     .from("posts")
@@ -79,13 +87,17 @@ export default async function PostsPage({ searchParams }: PageProps) {
   }));
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <TopBar
-        brands={switcherBrands}
-        currentBrandId={brandFilter}
-        breadcrumbSection={t("breadcrumb")}
-      />
-
+    <AppShell
+      active="posts"
+      brands={switcherBrands}
+      currentBrandId={brandFilter}
+      breadcrumb={t("breadcrumb")}
+      userInitials={makeInitials(account?.display_name ?? user.email ?? "")}
+      newPostHref={brandFilter ? `/writer?brand=${brandFilter}` : null}
+      planTier={account?.plan_tier ?? null}
+      planStatus={account?.plan_status ?? null}
+      trialEndsAt={account?.trial_ends_at ?? null}
+    >
       <section style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
         <div
           style={{
@@ -98,26 +110,68 @@ export default async function PostsPage({ searchParams }: PageProps) {
           <div>
             <h1
               style={{
-                fontSize: 28,
-                fontWeight: 600,
-                letterSpacing: "-0.022em",
+                fontFamily: "var(--font-fraunces), Georgia, serif",
+                fontVariationSettings: '"opsz" 96',
+                fontSize: 36,
+                fontWeight: 500,
+                letterSpacing: "-0.026em",
                 color: "var(--ink)",
                 margin: 0,
+                lineHeight: 1.02,
               }}
             >
               {t("title")}
             </h1>
             <p
               style={{
-                marginTop: 6,
-                fontSize: 13,
-                color: "var(--ink-muted)",
+                marginTop: 8,
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                color: "var(--ink-faint)",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
               }}
             >
               {t("subtitle", { count: list.length })}
             </p>
           </div>
         </div>
+
+        {/* Brand filter chips — only when there's more than one brand */}
+        {brands.length > 1 && (
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              marginBottom: 12,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <BrandChip
+              label={t("brandAll")}
+              active={!brandFilter}
+              href={
+                statusFilter === "all"
+                  ? "/posts"
+                  : `/posts?status=${statusFilter}`
+              }
+            />
+            {brands.map((b) => (
+              <BrandChip
+                key={b.id}
+                label={b.name}
+                color={brandColor(b.slug)}
+                active={brandFilter === b.id}
+                href={
+                  statusFilter === "all"
+                    ? `/posts?brand=${b.id}`
+                    : `/posts?status=${statusFilter}&brand=${b.id}`
+                }
+              />
+            ))}
+          </div>
+        )}
 
         {/* Status filter chips */}
         <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
@@ -161,8 +215,50 @@ export default async function PostsPage({ searchParams }: PageProps) {
           <PostsList posts={enriched} locale={locale} />
         )}
       </section>
-    </div>
+    </AppShell>
   );
+}
+
+function BrandChip({
+  label,
+  href,
+  active,
+  color,
+}: {
+  label: string;
+  href: string;
+  active: boolean;
+  color?: string;
+}) {
+  return (
+    <Link
+      href={href}
+      style={{
+        height: 26,
+        padding: "0 10px",
+        borderRadius: 14,
+        border: `1px solid ${active ? "var(--brand)" : "var(--border-subtle)"}`,
+        background: active ? "rgba(176,123,80,0.12)" : "transparent",
+        color: active ? "var(--ink)" : "var(--ink-muted)",
+        fontSize: 12,
+        fontWeight: 500,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        textDecoration: "none",
+      }}
+    >
+      {color && <BrandDot color={color} size={7} />}
+      {label}
+    </Link>
+  );
+}
+
+function makeInitials(name: string): string {
+  if (!name) return "—";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2);
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function EmptyState({ title, body, cta }: { title: string; body: string; cta: string }) {

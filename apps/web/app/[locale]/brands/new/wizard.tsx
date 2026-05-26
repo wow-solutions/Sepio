@@ -132,7 +132,17 @@ export function BrandWizard() {
     <FormProvider {...methods}>
       <Card>
         <CardHeader>
-          <CardTitle>{stepLabel}</CardTitle>
+          <CardTitle
+            style={{
+              fontFamily: "var(--font-fraunces), Georgia, serif",
+              fontVariationSettings: '"opsz" 48',
+              fontSize: 22,
+              fontWeight: 500,
+              letterSpacing: "-0.016em",
+            }}
+          >
+            {stepLabel}
+          </CardTitle>
           <CardDescription>
             {t("stepCounter", { current: stepIndex + 1, total: STEPS.length })}
           </CardDescription>
@@ -140,9 +150,11 @@ export function BrandWizard() {
             {STEPS.map((s, i) => (
               <span
                 key={s.id}
-                className={`h-1.5 flex-1 min-w-[20px] rounded-full ${
-                  i <= stepIndex ? "bg-foreground" : "bg-muted"
-                }`}
+                className="h-1.5 flex-1 min-w-[20px] rounded-full"
+                style={{
+                  background:
+                    i <= stepIndex ? "var(--brand)" : "var(--border-strong)",
+                }}
               />
             ))}
           </div>
@@ -159,15 +171,33 @@ export function BrandWizard() {
               variant="ghost"
               onClick={handleBack}
               disabled={stepIndex === 0 || pending}
+              style={{ borderRadius: 9999 }}
             >
               {t("back")}
             </Button>
             {isLast ? (
-              <Button type="button" onClick={handleSubmitFinal} disabled={pending}>
+              <Button
+                type="button"
+                onClick={handleSubmitFinal}
+                disabled={pending}
+                style={{
+                  borderRadius: 9999,
+                  background: "var(--sepio-sepia)",
+                  color: "var(--sepio-cream)",
+                }}
+              >
                 {pending ? t("creating") : t("create")}
               </Button>
             ) : (
-              <Button type="button" onClick={handleNext}>
+              <Button
+                type="button"
+                onClick={handleNext}
+                style={{
+                  borderRadius: 9999,
+                  background: "var(--sepio-sepia)",
+                  color: "var(--sepio-cream)",
+                }}
+              >
                 {t("next")}
               </Button>
             )}

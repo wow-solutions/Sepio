@@ -2,7 +2,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { notFound, redirect } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { TopBar } from "@/components/shell/top-bar";
+import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
@@ -50,6 +50,12 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
     .eq("platform", "linkedin")
     .maybeSingle();
 
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("display_name, plan_tier, plan_status, trial_ends_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
   const switcherBrands: BrandOption[] = (brandsList ?? []).map((b) => ({
     id: b.id,
     name: b.name,
@@ -59,14 +65,17 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
   const color = brandColor(brand.slug);
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <TopBar
-        brands={switcherBrands}
-        currentBrandId={brand.id}
-        breadcrumbSection={t("breadcrumb")}
-        breadcrumbCurrent={brand.name}
-      />
-
+    <AppShell
+      active="connections"
+      brands={switcherBrands}
+      currentBrandId={brand.id}
+      breadcrumb={`${brand.name} · ${t("breadcrumb")}`}
+      userInitials={makeInitials(account?.display_name ?? user.email ?? "")}
+      newPostHref={`/writer?brand=${brand.id}`}
+      planTier={account?.plan_tier ?? null}
+      planStatus={account?.plan_status ?? null}
+      trialEndsAt={account?.trial_ends_at ?? null}
+    >
       <section style={{ maxWidth: 880, margin: "0 auto", padding: "40px 32px" }}>
         {/* Header */}
         <div
@@ -80,11 +89,14 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
           <BrandDot color={color} size={14} />
           <h1
             style={{
-              fontSize: 32,
-              fontWeight: 600,
-              letterSpacing: "-0.022em",
+              fontFamily: "var(--font-fraunces), Georgia, serif",
+              fontVariationSettings: '"opsz" 144',
+              fontSize: 36,
+              fontWeight: 500,
+              letterSpacing: "-0.028em",
               color: "var(--ink)",
               margin: 0,
+              lineHeight: 1.02,
             }}
           >
             {brand.name}
@@ -106,11 +118,17 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
         <Link
           href={`/brands/${brand.id}/settings`}
           style={{
-            display: "inline-block",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            height: 36,
+            padding: "0 18px",
+            background: "var(--sepio-sepia)",
+            color: "var(--sepio-cream)",
+            borderRadius: 9999,
             fontSize: 13,
-            color: "var(--ink-muted)",
-            textDecoration: "underline",
-            textUnderlineOffset: 3,
+            fontWeight: 500,
+            textDecoration: "none",
             marginBottom: 32,
           }}
         >
@@ -148,10 +166,10 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
 
         <div
           style={{
-            background: "var(--surface)",
+            background: "var(--raised)",
             border: "1px solid var(--border-subtle)",
-            borderRadius: 10,
-            padding: 20,
+            borderRadius: 14,
+            padding: 22,
           }}
         >
           <div
@@ -249,8 +267,15 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
           </Link>
         </div>
       </section>
-    </div>
+    </AppShell>
   );
+}
+
+function makeInitials(name: string): string {
+  if (!name) return "—";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2);
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 // Server action wrapper to bind brandId (form action requires (formData) shape)
@@ -303,10 +328,10 @@ function buttonStylePrimary(): React.CSSProperties {
     alignItems: "center",
     height: 36,
     padding: "0 16px",
-    background: "var(--ink)",
-    color: "var(--bg)",
-    border: "1px solid var(--ink)",
-    borderRadius: 6,
+    background: "var(--sepio-sepia)",
+    color: "var(--sepio-cream)",
+    border: "1px solid var(--sepio-sepia)",
+    borderRadius: 9999,
     fontSize: 13,
     fontWeight: 500,
     textDecoration: "none",
@@ -319,11 +344,11 @@ function buttonStyleSecondary(): React.CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     height: 32,
-    padding: "0 12px",
-    background: "var(--raised)",
+    padding: "0 14px",
+    background: "transparent",
     color: "var(--ink)",
-    border: "1px solid var(--border-subtle)",
-    borderRadius: 6,
+    border: "1px solid var(--border-strong)",
+    borderRadius: 9999,
     fontSize: 13,
     fontWeight: 500,
     textDecoration: "none",
@@ -336,11 +361,11 @@ function buttonStyleDanger(): React.CSSProperties {
     display: "inline-flex",
     alignItems: "center",
     height: 32,
-    padding: "0 12px",
+    padding: "0 14px",
     background: "transparent",
     color: "rgb(180, 60, 60)",
     border: "1px solid rgba(200,80,80,0.30)",
-    borderRadius: 6,
+    borderRadius: 9999,
     fontSize: 13,
     fontWeight: 500,
     cursor: "pointer",

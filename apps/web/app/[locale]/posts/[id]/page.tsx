@@ -2,7 +2,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { notFound, redirect } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { TopBar } from "@/components/shell/top-bar";
+import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
@@ -43,6 +43,12 @@ export default async function PostDetailPage({ params }: PageProps) {
   const brands = brandsList ?? [];
   const brand = brands.find((b) => b.id === post.brand_id);
 
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("display_name, plan_tier, plan_status, trial_ends_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
   const switcherBrands: BrandOption[] = brands.map((b) => ({
     id: b.id,
     name: b.name,
@@ -53,14 +59,17 @@ export default async function PostDetailPage({ params }: PageProps) {
   const dateStr = formatDateTime(post.published_at ?? post.created_at, locale);
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <TopBar
-        brands={switcherBrands}
-        currentBrandId={post.brand_id}
-        breadcrumbSection={t("breadcrumb")}
-        breadcrumbCurrent={brand?.name ?? ""}
-      />
-
+    <AppShell
+      active="posts"
+      brands={switcherBrands}
+      currentBrandId={post.brand_id}
+      breadcrumb={brand?.name ?? t("breadcrumb")}
+      userInitials={makeInitials(account?.display_name ?? user.email ?? "")}
+      newPostHref={`/writer?brand=${post.brand_id}`}
+      planTier={account?.plan_tier ?? null}
+      planStatus={account?.plan_status ?? null}
+      trialEndsAt={account?.trial_ends_at ?? null}
+    >
       <section style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px" }}>
         <Link
           href="/posts"
@@ -129,8 +138,15 @@ export default async function PostDetailPage({ params }: PageProps) {
           externalUrl={post.external_post_url}
         />
       </section>
-    </div>
+    </AppShell>
   );
+}
+
+function makeInitials(name: string): string {
+  if (!name) return "—";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2);
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function formatDateTime(iso: string, locale: string): string {

@@ -2,7 +2,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { notFound, redirect } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { TopBar } from "@/components/shell/top-bar";
+import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
@@ -41,6 +41,12 @@ export default async function BrandSettingsPage({ params }: PageProps) {
     .eq("brand_id", brandId)
     .maybeSingle();
 
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("display_name, plan_tier, plan_status, trial_ends_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
   // Fetch brands list для TopBar
   const { data: brandsList } = await supabase
     .from("brands")
@@ -66,14 +72,17 @@ export default async function BrandSettingsPage({ params }: PageProps) {
     : brand.industry;
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <TopBar
-        brands={switcherBrands}
-        currentBrandId={brand.id}
-        breadcrumbSection={t("breadcrumb")}
-        breadcrumbCurrent={brand.name}
-      />
-
+    <AppShell
+      active="settings"
+      brands={switcherBrands}
+      currentBrandId={brand.id}
+      breadcrumb={`${brand.name} · ${t("breadcrumb")}`}
+      userInitials={makeInitials(account?.display_name ?? user.email ?? "")}
+      newPostHref={`/writer?brand=${brand.id}`}
+      planTier={account?.plan_tier ?? null}
+      planStatus={account?.plan_status ?? null}
+      trialEndsAt={account?.trial_ends_at ?? null}
+    >
       <section style={{ maxWidth: 720, margin: "0 auto", padding: "40px 32px" }}>
         <div
           style={{
@@ -86,11 +95,14 @@ export default async function BrandSettingsPage({ params }: PageProps) {
           <BrandDot color={color} size={14} />
           <h1
             style={{
-              fontSize: 28,
-              fontWeight: 600,
-              letterSpacing: "-0.022em",
+              fontFamily: "var(--font-fraunces), Georgia, serif",
+              fontVariationSettings: '"opsz" 96',
+              fontSize: 32,
+              fontWeight: 500,
+              letterSpacing: "-0.026em",
               color: "var(--ink)",
               margin: 0,
+              lineHeight: 1.04,
             }}
           >
             {t("title", { brand: brand.name })}
@@ -129,9 +141,9 @@ export default async function BrandSettingsPage({ params }: PageProps) {
 
         <div
           style={{
-            background: "var(--surface)",
+            background: "var(--raised)",
             border: "1px solid var(--border-subtle)",
-            borderRadius: 10,
+            borderRadius: 14,
             padding: 24,
           }}
         >
@@ -158,6 +170,13 @@ export default async function BrandSettingsPage({ params }: PageProps) {
           </Link>
         </div>
       </section>
-    </div>
+    </AppShell>
   );
+}
+
+function makeInitials(name: string): string {
+  if (!name) return "—";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2);
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }

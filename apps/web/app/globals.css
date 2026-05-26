@@ -118,10 +118,10 @@
   --radius-2xl: 20px;
   --radius-full: 9999px;
 
-  /* Layout vars (per HANDOFF) */
-  --shell-topbar-h: 52px;
+  /* Layout vars (per app handoff 2026-05-24: top-bar 56, rail 240) */
+  --shell-topbar-h: 56px;
   --shell-context-h: 36px;
-  --shell-sidebar-w: 220px;
+  --shell-sidebar-w: 240px;
   --shell-sidebar-w-collapsed: 56px;
   --writer-left-w: 304px;
   --writer-right-w: 340px;
@@ -397,4 +397,96 @@
   background: var(--surface-subtle, rgba(0,0,0,0.05));
   padding: 1px 5px;
   border-radius: 3px;
+}
+
+/* =========================================================================
+   AUTH — editorial split (app handoff 2026-05-24, "Sepio Auth screens")
+   ========================================================================= */
+.auth-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100dvh;
+  background: var(--bg);
+}
+/* Right editorial pane — radial sepia glow over the deep surface stack. */
+.auth-pane-col {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 600px 500px at 65% 30%, rgba(176, 123, 80, 0.18) 0%, rgba(176, 123, 80, 0) 60%),
+    radial-gradient(ellipse 400px 300px at 30% 80%, rgba(74, 44, 25, 0.40) 0%, rgba(74, 44, 25, 0) 65%),
+    linear-gradient(135deg, var(--sepio-surface-soft) 0%, var(--sepio-surface) 55%, var(--sepio-surface-deep) 100%);
+}
+/* Below the tablet breakpoint the editorial pane is dropped (not designed for
+   narrow) and the form column goes full-width. */
+@media (max-width: 900px) {
+  .auth-split { grid-template-columns: 1fr; }
+  .auth-pane-col { display: none; }
+}
+
+.auth-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.auth-input::placeholder { color: var(--ink-faint); }
+.auth-input:focus {
+  border-color: var(--sepio-sepia-bright);
+  box-shadow: 0 0 0 3px rgba(176, 123, 80, 0.16);
+}
+
+.auth-btn-primary {
+  width: 100%;
+  padding: 14px 24px;
+  background: var(--sepio-sepia);
+  color: var(--sepio-cream);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 500;
+  border: 0;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s, transform 0.05s;
+}
+.auth-btn-primary:hover { background: var(--sepio-sepia-deep); }
+.auth-btn-primary:active { transform: scale(0.99); }
+
+/* Dashboard brand cards — elevated, lift on hover (app handoff card grammar) */
+.brand-card {
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.brand-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(176, 123, 80, 0.28);
+  box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.55);
+}
+
+/* Publish button — the source dot becomes the Fork while publishing
+   (echoes the landing hero). Settles to the resting mark when done. */
+@keyframes sepio-publish-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.82); opacity: 0.6; }
+}
+.publish-mark {
+  display: inline-flex;
+  animation: sepio-publish-pulse 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .publish-mark { animation: none; }
+}
+
+/* Post list rows — subtle hover lift of the border (no transform). */
+.posts-row {
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.posts-row:hover {
+  border-color: rgba(176, 123, 80, 0.28);
 }

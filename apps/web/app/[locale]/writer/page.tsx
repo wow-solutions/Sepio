@@ -1,8 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { getBrandFromRequest } from "@/lib/get-brand";
 import { createClient } from "@/lib/supabase/server";
-import { TopBar } from "@/components/shell/top-bar";
-import { BrandContextStrip } from "@/components/brand/brand-context-strip";
+import { AppShell } from "@/components/shell/app-shell";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { WriterClient } from "./writer-client";
 
@@ -35,7 +34,7 @@ export default async function WriterPage({ searchParams }: PageProps) {
     supabase.from("posts").select("brand_id"),
     supabase
       .from("accounts")
-      .select("display_name")
+      .select("display_name, plan_tier, plan_status, trial_ends_at")
       .eq("id", userId)
       .maybeSingle(),
   ]);
@@ -61,8 +60,6 @@ export default async function WriterPage({ searchParams }: PageProps) {
   });
 
   const currentConfig = configsList.find((c) => c.brand_id === brand.id);
-  const currentPostCount = postCounts[brand.id] ?? 0;
-  const voiceSummary = formatToneSummary(currentConfig?.tone_attributes ?? []);
 
   const accountDisplayName = account?.display_name ?? "";
   const userInitials = makeInitials(accountDisplayName);
@@ -70,31 +67,17 @@ export default async function WriterPage({ searchParams }: PageProps) {
   const t = await getTranslations("writer");
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateRows:
-          "var(--shell-topbar-h) var(--shell-context-h) 1fr",
-        height: "100vh",
-        overflow: "hidden",
-      }}
+    <AppShell
+      active="writer"
+      brands={switcherBrands}
+      currentBrandId={brand.id}
+      breadcrumb={`${t("breadcrumb")} · ${brand.name}`}
+      userInitials={userInitials}
+      newPostHref={`/writer?brand=${brand.id}`}
+      planTier={account?.plan_tier ?? null}
+      planStatus={account?.plan_status ?? null}
+      trialEndsAt={account?.trial_ends_at ?? null}
     >
-      <TopBar
-        brands={switcherBrands}
-        currentBrandId={brand.id}
-        breadcrumbSection={t("breadcrumb")}
-        userInitials={userInitials}
-        newPostHref={`/writer?brand=${brand.id}`}
-      />
-      <BrandContextStrip
-        brand={{
-          id: brand.id,
-          name: brand.name,
-          slug: brand.slug,
-          voiceSummary,
-          postCount: currentPostCount,
-        }}
-      />
       <WriterClient
         brandId={brand.id}
         brandName={brand.name}
@@ -105,7 +88,7 @@ export default async function WriterPage({ searchParams }: PageProps) {
           seoKeywords: currentConfig?.seo_keywords_primary ?? [],
         }}
       />
-    </div>
+    </AppShell>
   );
 }
 

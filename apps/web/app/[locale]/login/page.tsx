@@ -1,10 +1,14 @@
 import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { SepioMark } from "@/components/shell/sepio-mark";
-import { Wordmark } from "@/components/shell/wordmark";
+import {
+  AuthSplit,
+  AuthPane,
+  AuthDisplay,
+  AuthLede,
+  AuthFieldLabel,
+  Eyebrow,
+  Em,
+} from "@/components/shell/auth-split";
 import { login } from "./actions";
 
 type PageProps = {
@@ -14,6 +18,8 @@ type PageProps = {
 export default async function LoginPage({ searchParams }: PageProps) {
   const { error, message } = await searchParams;
   const t = await getTranslations("auth.login");
+  const tPane = await getTranslations("auth.pane");
+  const tFooter = await getTranslations("auth.footer");
   const tMsg = await getTranslations();
 
   // Translate auth.messages.* keys passed via URL; show plain strings as-is.
@@ -30,130 +36,93 @@ export default async function LoginPage({ searchParams }: PageProps) {
   const displayError = translateOrRaw(error);
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "var(--bg)",
-        padding: "24px 16px",
+    <AuthSplit
+      screenLabel={t("eyebrow")}
+      footer={{
+        copyright: tFooter("copyright"),
+        terms: tFooter("terms"),
+        privacy: tFooter("privacy"),
       }}
+      rightPane={
+        <AuthPane
+          eyebrow={tPane("eyebrow")}
+          headline={tPane.rich("headline", { em: (c) => <Em>{c}</Em> })}
+          lede={tPane("lede")}
+        />
+      }
     >
-      <div style={{ width: "100%", maxWidth: 380 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 28,
-          }}
-        >
-          <SepioMark size={32} />
-          <Wordmark size={18} />
-        </div>
-
-        <h1
-          style={{
-            fontSize: 24,
-            fontWeight: 600,
-            letterSpacing: "-0.018em",
-            color: "var(--ink)",
-            margin: 0,
-            marginBottom: 6,
-          }}
-        >
-          {t("title")}
-        </h1>
-        <p
-          style={{
-            fontFamily: "var(--font-serif)",
-            fontStyle: "italic",
-            fontSize: 15,
-            color: "var(--ink-muted)",
-            margin: 0,
-            marginBottom: 24,
-          }}
-        >
-          {t("tagline")}
-        </p>
-
-        {displayMessage && <Banner kind="pass">{displayMessage}</Banner>}
-        {displayError && <Banner kind="risky">{displayError}</Banner>}
-
-        <form action={login} style={{ display: "grid", gap: 14 }}>
-          <Field id="email" label={t("email")}>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              required
-              autoComplete="email"
-            />
-          </Field>
-          <Field id="password" label={t("password")}>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-            />
-          </Field>
-          <Button type="submit" className="w-full mt-2 h-9">
-            {t("submit")}
-          </Button>
-        </form>
-
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--ink-muted)",
-            marginTop: 24,
-            textAlign: "center",
-          }}
-        >
-          {t("noAccount")}{" "}
-          <Link
-            href="/signup"
-            style={{ color: "var(--info)", textDecoration: "none" }}
-          >
-            {t("signupLink")}
-          </Link>
-        </p>
+      <div style={{ marginBottom: 28 }}>
+        <Eyebrow>{t("eyebrow")}</Eyebrow>
+        <AuthDisplay>{t.rich("headline", { em: (c) => <Em>{c}</Em> })}</AuthDisplay>
+        <AuthLede>{t("lede")}</AuthLede>
       </div>
-    </main>
-  );
-}
 
-function Field({
-  id,
-  label,
-  children,
-}: {
-  id: string;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <Label
-        htmlFor={id}
+      {displayMessage && <Banner kind="pass">{displayMessage}</Banner>}
+      {displayError && <Banner kind="risky">{displayError}</Banner>}
+
+      <form action={login} style={{ display: "grid", gap: 16 }}>
+        <div>
+          <AuthFieldLabel htmlFor="email">{t("email")}</AuthFieldLabel>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            className="auth-input"
+          />
+        </div>
+        <div>
+          <AuthFieldLabel
+            htmlFor="password"
+            hint={
+              <Link
+                href="/forgot"
+                style={{ color: "var(--sepio-sepia-bright)", textDecoration: "none" }}
+              >
+                {t("forgotLink")}
+              </Link>
+            }
+          >
+            {t("password")}
+          </AuthFieldLabel>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            autoComplete="current-password"
+            className="auth-input"
+          />
+        </div>
+        <button type="submit" className="auth-btn-primary" style={{ marginTop: 6 }}>
+          {t("submit")} →
+        </button>
+      </form>
+
+      <p
         style={{
-          display: "block",
-          fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          fontWeight: 500,
-          color: "var(--ink-faint)",
-          textTransform: "uppercase",
-          letterSpacing: "0.12em",
-          marginBottom: 6,
+          textAlign: "center",
+          fontSize: 13.5,
+          color: "var(--ink-muted)",
+          marginTop: 28,
+          paddingTop: 22,
+          borderTop: "1px solid var(--border-subtle)",
         }}
       >
-        {label}
-      </Label>
-      {children}
-    </div>
+        {t("noAccount")}{" "}
+        <Link
+          href="/signup"
+          style={{
+            color: "var(--sepio-sepia-bright)",
+            textDecoration: "none",
+            fontWeight: 500,
+          }}
+        >
+          {t("signupLink")}
+        </Link>
+      </p>
+    </AuthSplit>
   );
 }
 
@@ -181,7 +150,7 @@ function Banner({
       style={{
         marginBottom: 16,
         padding: "10px 12px",
-        borderRadius: 6,
+        borderRadius: 8,
         fontSize: 13,
         lineHeight: 1.5,
         ...styles,

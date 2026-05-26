@@ -25,7 +25,11 @@
       "password": "Password",
       "submit": "Log in",
       "noAccount": "No account?",
-      "signupLink": "Sign up"
+      "signupLink": "Sign up",
+      "eyebrow": "Sign in",
+      "headline": "Welcome <em>back.</em>",
+      "lede": "One brand, every feed — pick up where you left off.",
+      "forgotLink": "Forgot password?"
     },
     "signup": {
       "title": "Create your account",
@@ -38,7 +42,40 @@
       "submit": "Create account",
       "haveAccount": "Already have an account?",
       "loginLink": "Log in",
-      "legal": "By signing up you agree to our <terms>Terms</terms> and <privacy>Privacy Policy</privacy>."
+      "legal": "By signing up you agree to our <terms>Terms</terms> and <privacy>Privacy Policy</privacy>.",
+      "eyebrow": "14-day trial · no card",
+      "headline": "Start your <em>trial.</em>",
+      "lede": "Connect your platforms in minutes. Nothing publishes without your approval."
+    },
+    "pane": {
+      "eyebrow": "One source · every feed",
+      "headline": "Six platforms. <em>One voice.</em>",
+      "lede": "Write once. Sepio adapts each post to the feed it lands in, and never publishes without your approval."
+    },
+    "footer": {
+      "copyright": "© Sepio · sepio.app",
+      "terms": "Terms",
+      "privacy": "Privacy"
+    },
+    "forgot": {
+      "eyebrow": "Reset",
+      "headline": "Forgot your <em>password?</em>",
+      "lede": "Enter the email you signed up with. We will send a one-time link to set a new password.",
+      "email": "Email",
+      "submit": "Send reset link",
+      "sentTitle": "Check your <em>inbox.</em>",
+      "sentBody": "If a Sepio account exists for that email, a reset link is on its way. It expires in 60 minutes.",
+      "back": "← Back to sign in"
+    },
+    "reset": {
+      "eyebrow": "Reset · step 2",
+      "headline": "Set a new <em>password.</em>",
+      "lede": "Choose something memorable. Once it is set you will be signed in on this device.",
+      "password": "New password",
+      "confirm": "Confirm new password",
+      "submit": "Save and sign in",
+      "mismatch": "Passwords do not match.",
+      "tooShort": "Password must be at least 8 characters."
     }
   },
   "dashboard": {
@@ -46,7 +83,7 @@
     "title": "Your brands",
     "brandCount": "{count, plural, =0 {no brands} one {# brand} other {# brands}}",
     "signOut": "Sign out",
-    "addBrand": "+ Add brand",
+    "addBrand": "Add brand",
     "empty": {
       "title": "No brands yet.",
       "body": "The brand wizard collects voice, tone, customer language and SEO topics. Takes about 3 minutes.",
@@ -131,9 +168,18 @@
     "problem": {
       "eyebrow": "Why this exists",
       "h2": "Content dies the day operations get loud.",
-      "stat1": { "number": "2 → 15", "label": "posts/month after automation" },
-      "stat2": { "number": "8×", "label": "site impressions, month one" },
-      "stat3": { "number": "$0.18", "label": "cost per article" },
+      "stat1": {
+        "number": "2 → 15",
+        "label": "posts/month after automation"
+      },
+      "stat2": {
+        "number": "8×",
+        "label": "site impressions, month one"
+      },
+      "stat3": {
+        "number": "$0.18",
+        "label": "cost per article"
+      },
       "body": "Service-business founders pick operations over content every Monday. The blank page always loses. We hit this at our own HVAC business in Panama, then built the engine: one source idea → platform-fit drafts → scheduled publish. Sepio is that engine."
     },
     "how": {
@@ -203,9 +249,9 @@
     "saveDraft": "Save draft",
     "approve": "Approve →",
     "approveTooltip": "Sprint 1B — approval flow",
-    "publish": "Publish →",
+    "publish": "Publish",
     "publishing": "Publishing…",
-    "published": "Published ✓",
+    "published": "Published",
     "publishedView": "View on LinkedIn ↗",
     "publishReconnect": "reconnect LinkedIn and retry",
     "rehumanize": "Humanize text",
@@ -234,7 +280,15 @@
       "sourceVoc": "From your data",
       "selected": "Selected",
       "errorFallback": "Couldn't load topics. Refresh to retry."
-    }
+    },
+    "emptyEyebrow": "New post",
+    "emptyTitle": "Start with <em>one idea.</em>",
+    "emptyBody": "Give Sepio a topic or paste an article in the panel on the left. It drafts the post in your brand voice — you edit, then publish.",
+    "previewLabel": "Preview",
+    "previewEmpty": "Write something — and watch it appear here, shaped for the feed.",
+    "previewSoon": "soon",
+    "previewCollapse": "Hide preview",
+    "previewExpand": "Show preview"
   },
   "posts": {
     "breadcrumb": "Posts",
@@ -305,7 +359,8 @@
         "pending_approval": "Pending",
         "published": "Published"
       }
-    }
+    },
+    "brandAll": "All brands"
   },
   "wizard": {
     "shell": {
@@ -429,5 +484,20 @@
         "approvalMode": "Approval mode"
       }
     }
+  },
+  "shell": {
+    "workspace": "Workspace",
+    "home": "Home",
+    "writer": "Writer",
+    "posts": "Posts",
+    "channels": "Channels",
+    "soon": "soon",
+    "connect": "connect",
+    "trialLeft": "Trial · {days, plural, one {# day left} other {# days left}}",
+    "upgrade": "Upgrade now",
+    "selectBrandHint": "Pick a brand to start writing, or add one.",
+    "newPost": "New post",
+    "showMenu": "Show menu",
+    "hideMenu": "Hide menu"
   }
 }

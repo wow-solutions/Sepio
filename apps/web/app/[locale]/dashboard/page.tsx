@@ -2,7 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { TopBar } from "@/components/shell/top-bar";
+import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
@@ -63,15 +63,16 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const userInitials = makeInitials(account?.display_name ?? user.email ?? "");
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      <TopBar
-        brands={switcherBrands}
-        currentBrandId={null}
-        breadcrumbSection={t("breadcrumb")}
-        userInitials={userInitials}
-        newPostHref={null}
-      />
-
+    <AppShell
+      active="home"
+      brands={switcherBrands}
+      currentBrandId={null}
+      breadcrumb={t("breadcrumb")}
+      userInitials={userInitials}
+      planTier={account?.plan_tier ?? null}
+      planStatus={account?.plan_status ?? null}
+      trialEndsAt={account?.trial_ends_at ?? null}
+    >
       <section
         style={{
           maxWidth: 1200,
@@ -84,63 +85,74 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             display: "flex",
             alignItems: "flex-end",
             justifyContent: "space-between",
-            marginBottom: 28,
+            gap: 16,
+            marginBottom: 32,
+            flexWrap: "wrap",
           }}
         >
           <div>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                color: "var(--brand)",
+                marginBottom: 12,
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: "var(--brand)",
+                  boxShadow: "0 0 0 3px rgba(176,123,80,0.16)",
+                }}
+              />
+              {account?.display_name ?? user.email}
+            </div>
             <h1
               style={{
-                fontSize: 32,
-                fontWeight: 600,
-                letterSpacing: "-0.022em",
+                fontFamily: "var(--font-fraunces), Georgia, serif",
+                fontVariationSettings: '"opsz" 144',
+                fontSize: 40,
+                fontWeight: 500,
+                letterSpacing: "-0.028em",
                 color: "var(--ink)",
                 margin: 0,
+                lineHeight: 1.02,
               }}
             >
               {t("title")}
             </h1>
             <p
               style={{
-                marginTop: 8,
-                fontSize: 14,
-                color: "var(--ink-muted)",
+                marginTop: 10,
+                fontFamily: "var(--font-mono)",
+                fontSize: 12,
+                color: "var(--ink-faint)",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
               }}
             >
-              {account?.display_name ?? user.email}
-              {" · "}
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 12,
-                  color: "var(--ink-faint)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                }}
-              >
-                {account?.plan_tier ?? "trial"}
-              </span>
-              {" · "}
-              <span
-                style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 12,
-                  color: "var(--ink-faint)",
-                }}
-              >
-                {t("brandCount", { count: list.length })}
-              </span>
+              {account?.plan_tier ?? "trial"} · {t("brandCount", { count: list.length })}
             </p>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <form action={signout}>
               <button
                 type="submit"
                 style={{
-                  height: 32,
-                  padding: "0 12px",
+                  height: 36,
+                  padding: "0 14px",
                   background: "transparent",
-                  border: "1px solid transparent",
-                  borderRadius: 6,
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: 9999,
                   color: "var(--ink-muted)",
                   fontSize: 13,
                   fontWeight: 500,
@@ -156,14 +168,14 @@ export default async function DashboardPage({ searchParams }: PageProps) {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
-                height: 32,
-                padding: "0 14px",
-                background: "var(--ink)",
-                color: "var(--bg)",
-                border: "1px solid var(--ink)",
-                borderRadius: 6,
+                height: 36,
+                padding: "0 18px",
+                background: "var(--sepio-sepia)",
+                color: "var(--sepio-cream)",
+                borderRadius: 9999,
                 fontSize: 13,
                 fontWeight: 500,
+                textDecoration: "none",
               }}
             >
               {t("addBrand")}
@@ -205,7 +217,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           </ul>
         )}
       </section>
-    </div>
+    </AppShell>
   );
 }
 
@@ -233,12 +245,13 @@ function BrandCard({
   const color = brandColor(brand.slug);
   return (
     <li
+      className="brand-card"
       style={{
         position: "relative",
-        background: "var(--surface)",
+        background: "var(--raised)",
         border: `1px solid ${isNew ? "var(--pass)" : "var(--border-subtle)"}`,
-        borderRadius: 10,
-        padding: 20,
+        borderRadius: 14,
+        padding: 22,
         overflow: "hidden",
       }}
     >
@@ -266,11 +279,13 @@ function BrandCard({
           <BrandDot color={color} size={10} />
           <h3
             style={{
-              fontSize: 15,
-              fontWeight: 600,
+              fontFamily: "var(--font-fraunces), Georgia, serif",
+              fontVariationSettings: '"opsz" 48',
+              fontSize: 18,
+              fontWeight: 500,
               color: "var(--ink)",
               margin: 0,
-              letterSpacing: "-0.01em",
+              letterSpacing: "-0.014em",
             }}
           >
             {brand.name}
@@ -324,9 +339,9 @@ function BrandCard({
           href={`/writer?brand=${brand.id}`}
           style={{
             height: 28,
-            padding: "0 10px",
-            background: "var(--raised)",
-            border: "1px solid var(--border-subtle)",
+            padding: "0 12px",
+            background: "rgba(176,123,80,0.12)",
+            border: "1px solid rgba(176,123,80,0.28)",
             borderRadius: 6,
             fontSize: 13,
             fontWeight: 500,
@@ -334,6 +349,7 @@ function BrandCard({
             display: "inline-flex",
             alignItems: "center",
             gap: 4,
+            textDecoration: "none",
           }}
         >
           {labels.writer}

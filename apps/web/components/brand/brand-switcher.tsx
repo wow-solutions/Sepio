@@ -27,9 +27,12 @@ export type BrandOption = {
 type Props = {
   brands: BrandOption[];
   currentBrandId: string | null;
+  // "bar" = the legacy top-bar pill (fixed min-width). "rail" = full-width
+  // workspace selector that sits at the top of the app rail (Phase 1 chassis).
+  variant?: "bar" | "rail";
 };
 
-export function BrandSwitcher({ brands, currentBrandId }: Props) {
+export function BrandSwitcher({ brands, currentBrandId, variant = "bar" }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -78,7 +81,8 @@ export function BrandSwitcher({ brands, currentBrandId }: Props) {
             borderRadius: 6,
             fontSize: 13,
             color: "var(--ink)",
-            minWidth: 232,
+            minWidth: variant === "rail" ? 0 : 232,
+            width: variant === "rail" ? "100%" : undefined,
             cursor: "pointer",
             transition: "border-color 120ms",
           }}

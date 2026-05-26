@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
+import { SepioMark } from "@/components/shell/sepio-mark";
 import { saveDraft } from "./actions";
 import { TopicPicker } from "./_components/topic-picker";
 
@@ -64,6 +65,8 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
   const [pickedTopic, setPickedTopic] = useState<PickedTopic | null>(null);
   // Increment to trigger TopicPicker re-fetch (e.g. after generate consumes a card).
   const [topicsRefreshKey, setTopicsRefreshKey] = useState(0);
+  // Right preview panel can collapse to the right edge.
+  const [previewOpen, setPreviewOpen] = useState(true);
 
   const voiceShort = shortenVoice(brandConfig.brandVoice);
   const toneTop = truncateList(brandConfig.toneAttributes, 4);
@@ -285,15 +288,17 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "var(--writer-left-w) 1fr",
-        overflow: "hidden",
+        flex: 1,
         minHeight: 0,
+        display: "flex",
+        overflow: "hidden",
       }}
     >
-      {/* LEFT — prompt panel */}
+      {/* LEFT — prompt / article settings panel (fixed, does not collapse) */}
       <aside
         style={{
+          width: "var(--writer-left-w)",
+          flexShrink: 0,
           borderRight: "1px solid var(--border-subtle)",
           background: "var(--bg)",
           display: "flex",
@@ -489,9 +494,10 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
         </Section>
       </aside>
 
-      {/* CENTER — editor */}
+      {/* CENTER — editor (the main workspace; more context will live here) */}
       <main
         style={{
+          flex: 1,
           background: "var(--bg)",
           display: "flex",
           flexDirection: "column",
@@ -549,27 +555,31 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
             minHeight: 0,
           }}
         >
-          <div style={{ maxWidth: "var(--editor-max-w)", margin: "0 auto" }}>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={20}
-              placeholder={t("draftPlaceholder")}
-              style={{
-                width: "100%",
-                background: "transparent",
-                border: 0,
-                outline: "none",
-                resize: "vertical",
-                fontFamily: "var(--font-sans)",
-                fontSize: 16,
-                lineHeight: 1.65,
-                color: "var(--ink)",
-                letterSpacing: "-0.005em",
-                minHeight: 400,
-              }}
-            />
-          </div>
+          {!postId && !content.trim() ? (
+            <EmptyComposer />
+          ) : (
+            <div style={{ maxWidth: "var(--editor-max-w)", margin: "0 auto" }}>
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={20}
+                placeholder={t("draftPlaceholder")}
+                style={{
+                  width: "100%",
+                  background: "transparent",
+                  border: 0,
+                  outline: "none",
+                  resize: "vertical",
+                  fontFamily: "var(--font-sans)",
+                  fontSize: 16,
+                  lineHeight: 1.65,
+                  color: "var(--ink)",
+                  letterSpacing: "-0.005em",
+                  minHeight: 400,
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <footer
@@ -594,20 +604,37 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
                     : t("statusSaved")}
             </span>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              rowGap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
             {publishedUrl && stage === "published" && (
               <a
                 href={publishedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
-                  fontSize: 12,
-                  color: "var(--pass)",
-                  textDecoration: "underline",
-                  marginRight: 4,
+                  height: 32,
+                  padding: "0 12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  borderRadius: 9999,
+                  border: "1px solid var(--border-strong)",
+                  background: "transparent",
+                  color: "var(--ink)",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  textDecoration: "none",
                 }}
               >
-                {t("publishedView")}
+                {t("publishedView")} ↗
               </a>
             )}
             {humanizeSnapshot !== null && (
@@ -649,10 +676,22 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
                 : stage === "published"
                   ? t("published")
                   : t("publish")}
+              <PublishMark stage={stage} />
             </button>
           </div>
         </footer>
       </main>
+
+      {/* RIGHT — live LinkedIn preview (collapsible to the right edge) */}
+      {previewOpen ? (
+        <LivePreview
+          brandName={brandName}
+          content={content}
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : (
+        <PreviewReopen onOpen={() => setPreviewOpen(true)} />
+      )}
     </div>
   );
 }
@@ -1057,13 +1096,14 @@ function primaryButton(disabled: boolean, height: number): React.CSSProperties {
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    padding: "0 12px",
-    borderRadius: 6,
+    padding: "0 16px",
+    whiteSpace: "nowrap",
+    borderRadius: 9999,
     fontSize: height >= 40 ? 14 : 13,
     fontWeight: 500,
-    border: "1px solid var(--ink)",
-    background: "var(--ink)",
-    color: "var(--bg)",
+    border: "1px solid var(--sepio-sepia)",
+    background: "var(--sepio-sepia)",
+    color: "var(--sepio-cream)",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.5 : 1,
     transition: "opacity 120ms",
@@ -1081,12 +1121,13 @@ function secondaryButton(
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
-    padding: "0 12px",
-    borderRadius: 6,
+    padding: "0 16px",
+    whiteSpace: "nowrap",
+    borderRadius: 9999,
     fontSize: 13,
     fontWeight: 500,
     border: "1px solid var(--border-strong)",
-    background: "var(--surface)",
+    background: "transparent",
     color: "var(--ink)",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.5 : 1,
@@ -1125,4 +1166,438 @@ function formatList(
 ): string {
   const base = t.shown.join(" · ");
   return t.rest > 0 ? `${base} · ${moreSuffix.replace("{n}", String(t.rest))}` : base;
+}
+
+/* ─── composer empty state + live preview (app handoff 2026-05-24) ──────── */
+
+function Em({ children }: { children: React.ReactNode }) {
+  return (
+    <em
+      style={{
+        fontFamily: "var(--font-fraunces), Georgia, serif",
+        fontStyle: "italic",
+        fontWeight: 400,
+        color: "var(--sepio-sepia-bright)",
+      }}
+    >
+      {children}
+    </em>
+  );
+}
+
+// Shown in the center when there is no draft yet — the "Start with one idea"
+// hero. The actual prompt input lives in the left rail; this points to it.
+function EmptyComposer() {
+  const t = useTranslations("writer");
+  return (
+    <div
+      style={{
+        height: "100%",
+        minHeight: 360,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 24,
+        textAlign: "center",
+        padding: 24,
+      }}
+    >
+      <SepioMark size={88} />
+      <div style={{ maxWidth: 460 }}>
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: "var(--brand)",
+            marginBottom: 14,
+          }}
+        >
+          {t("emptyEyebrow")}
+        </div>
+        <h2
+          style={{
+            fontFamily: "var(--font-fraunces), Georgia, serif",
+            fontVariationSettings: '"opsz" 96',
+            fontWeight: 500,
+            fontSize: 44,
+            lineHeight: 1.02,
+            letterSpacing: "-0.028em",
+            color: "var(--ink)",
+            margin: "0 0 14px",
+          }}
+        >
+          {t.rich("emptyTitle", { em: (c) => <Em>{c}</Em> })}
+        </h2>
+        <p
+          style={{
+            fontFamily: "var(--font-sans)",
+            fontSize: 15,
+            lineHeight: 1.6,
+            color: "var(--ink-muted)",
+            margin: 0,
+          }}
+        >
+          {t("emptyBody")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function LivePreview({
+  brandName,
+  content,
+  onClose,
+}: {
+  brandName: string;
+  content: string;
+  onClose: () => void;
+}) {
+  const t = useTranslations("writer");
+  const hasContent = content.trim().length > 0;
+  // Only LinkedIn is wired (ADR-0019); the rest are shown as "soon" tabs.
+  const soonTabs = ["Telegram", "Instagram", "TikTok", "Threads", "Blog"];
+  return (
+    <aside
+      style={{
+        width: "var(--writer-right-w)",
+        flexShrink: 0,
+        borderLeft: "1px solid var(--border-subtle)",
+        background: "var(--sepio-surface-soft)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          padding: "16px 20px 0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <span style={caption()}>{t("previewLabel")}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("previewCollapse")}
+          title={t("previewCollapse")}
+          style={{
+            background: "transparent",
+            border: 0,
+            color: "var(--ink-faint)",
+            cursor: "pointer",
+            padding: 4,
+            display: "inline-flex",
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          padding: "12px 20px 14px",
+          overflowX: "auto",
+        }}
+      >
+        <PreviewTab label="LinkedIn" active />
+        {soonTabs.map((p) => (
+          <PreviewTab key={p} label={p} soon={t("previewSoon")} />
+        ))}
+      </div>
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "0 20px 20px",
+          minHeight: 0,
+        }}
+      >
+        {hasContent ? (
+          <LinkedInPreviewCard brandName={brandName} content={content} />
+        ) : (
+          <PreviewPlaceholder text={t("previewEmpty")} />
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function PreviewTab({
+  label,
+  active,
+  soon,
+}: {
+  label: string;
+  active?: boolean;
+  soon?: string;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 12px",
+        borderRadius: 9999,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+        fontFamily: "var(--font-sans)",
+        fontSize: 11.5,
+        fontWeight: 500,
+        background: active ? "rgba(176,123,80,0.16)" : "rgba(255,255,255,0.03)",
+        border: `1px solid ${active ? "rgba(176,123,80,0.32)" : "var(--border-subtle)"}`,
+        color: active ? "var(--ink)" : "var(--ink-faint)",
+      }}
+    >
+      {label}
+      {soon && (
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            padding: "0 4px",
+            borderRadius: 3,
+            background: "rgba(255,255,255,0.06)",
+            color: "var(--ink-faint)",
+          }}
+        >
+          {soon}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// Faithful LinkedIn post card — light surface, native LinkedIn styling. Per
+// the brand lock, light surfaces are allowed for embedded social previews.
+function LinkedInPreviewCard({
+  brandName,
+  content,
+}: {
+  brandName: string;
+  content: string;
+}) {
+  const initial = (brandName.trim()[0] ?? "S").toUpperCase();
+  return (
+    <div
+      style={{
+        background: "#fff",
+        color: "#0a0a0a",
+        borderRadius: 12,
+        padding: 18,
+        fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+        boxShadow: "0 16px 40px -12px rgba(0,0,0,0.5)",
+        marginTop: 8,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            background: "#1C1815",
+            color: "#B07B50",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: "var(--font-fraunces), Georgia, serif",
+            fontVariationSettings: '"opsz" 36',
+            fontWeight: 500,
+            fontSize: 15,
+            flexShrink: 0,
+          }}
+        >
+          {initial}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 600,
+              fontSize: 12.5,
+              color: "#0a0a0a",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {brandName}
+          </div>
+          <div style={{ fontSize: 10.5, color: "#6a6a6a" }}>now</div>
+        </div>
+        <span style={{ color: "#6a6a6a", fontSize: 18, lineHeight: 1 }}>···</span>
+      </div>
+      <div
+        style={{
+          fontSize: 12.5,
+          lineHeight: 1.5,
+          color: "#0a0a0a",
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+        }}
+      >
+        {content}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: 16,
+          fontSize: 11,
+          color: "#5a5a5a",
+          paddingTop: 10,
+          marginTop: 12,
+          borderTop: "1px solid #e5e5e5",
+        }}
+      >
+        <span>♡ Like</span>
+        <span>Comment</span>
+        <span>↗ Share</span>
+      </div>
+    </div>
+  );
+}
+
+function PreviewPlaceholder({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        padding: "48px 24px",
+        textAlign: "center",
+        background: "rgba(255,255,255,0.02)",
+        border: "1px dashed var(--border-strong)",
+        borderRadius: 12,
+        marginTop: 8,
+      }}
+    >
+      <div style={{ opacity: 0.4, marginBottom: 14, display: "flex", justifyContent: "center" }}>
+        <SepioMark size={40} />
+      </div>
+      <p
+        style={{
+          fontFamily: "var(--font-fraunces), Georgia, serif",
+          fontStyle: "italic",
+          fontVariationSettings: '"opsz" 60',
+          fontSize: 16,
+          color: "var(--ink-muted)",
+          lineHeight: 1.4,
+          margin: 0,
+        }}
+      >
+        {text}
+      </p>
+    </div>
+  );
+}
+
+// Bare Fork glyph (no tile) in currentColor — for the publish button.
+function ForkGlyph({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 200 200" fill="none" aria-hidden>
+      <circle cx="32" cy="100" r="15" fill="currentColor" />
+      <g stroke="currentColor" strokeWidth="9" strokeLinecap="round" opacity="0.9">
+        <path d="M 46 100 C 90 100, 100 100, 118 28" />
+        <path d="M 46 100 C 100 100, 110 100, 130 64" />
+        <path d="M 46 100 L 168 100" />
+        <path d="M 46 100 C 100 100, 110 100, 130 136" />
+        <path d="M 46 100 C 90 100, 100 100, 118 172" />
+      </g>
+      <g fill="currentColor">
+        <circle cx="122" cy="22" r="12" />
+        <circle cx="135" cy="58" r="12" />
+        <circle cx="172" cy="100" r="13" />
+        <circle cx="135" cy="142" r="12" />
+        <circle cx="122" cy="178" r="12" />
+      </g>
+    </svg>
+  );
+}
+
+// Publish button trailing mark: a source dot at rest → the Fork while
+// publishing (pulses) → the settled Fork once published. Echoes the landing.
+function PublishMark({ stage }: { stage: Stage }) {
+  if (stage === "publishing") {
+    return (
+      <span className="publish-mark" style={{ color: "var(--sepio-cream)" }}>
+        <ForkGlyph size={16} />
+      </span>
+    );
+  }
+  if (stage === "published") {
+    return (
+      <span style={{ display: "inline-flex", color: "var(--sepio-cream)" }}>
+        <ForkGlyph size={16} />
+      </span>
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: "50%",
+        background: "var(--sepio-cream)",
+        display: "inline-block",
+      }}
+    />
+  );
+}
+
+// Collapsed-preview rail: a thin strip on the right edge to reopen the preview.
+function PreviewReopen({ onOpen }: { onOpen: () => void }) {
+  const t = useTranslations("writer");
+  return (
+    <aside
+      style={{
+        width: 44,
+        flexShrink: 0,
+        borderLeft: "1px solid var(--border-subtle)",
+        background: "var(--sepio-surface-soft)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        paddingTop: 16,
+        gap: 12,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={t("previewExpand")}
+        title={t("previewExpand")}
+        style={{
+          background: "transparent",
+          border: 0,
+          color: "var(--ink-muted)",
+          cursor: "pointer",
+          padding: 4,
+          display: "inline-flex",
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+      </button>
+      <span
+        style={{
+          ...caption(),
+          writingMode: "vertical-rl",
+          transform: "rotate(180deg)",
+          color: "var(--ink-faint)",
+        }}
+      >
+        {t("previewLabel")}
+      </span>
+    </aside>
+  );
 }
