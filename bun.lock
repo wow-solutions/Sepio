@@ -6,7 +6,7 @@
       "name": "quoteworthy",
     },
     "apps/web": {
-      "name": "@quoteworthy/web",
+      "name": "@sepio/web",
       "version": "0.0.0",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.96.0",
@@ -46,7 +46,7 @@
       },
     },
     "packages/shared-types": {
-      "name": "@quoteworthy/shared-types",
+      "name": "@sepio/shared-types",
       "version": "0.0.0",
       "devDependencies": {
         "typescript": "^5.9.3",
@@ -380,10 +380,6 @@
 
     "@prisma/instrumentation": ["@prisma/instrumentation@7.6.0", "", { "dependencies": { "@opentelemetry/instrumentation": "^0.207.0" }, "peerDependencies": { "@opentelemetry/api": "^1.8" } }, "sha512-ZPW2gRiwpPzEfgeZgaekhqXrbW+Y2RJKHVqUmlhZhKzRNCcvR6DykzylDrynpArKKRQtLxoZy36fK7U0p3pdgQ=="],
 
-    "@quoteworthy/shared-types": ["@quoteworthy/shared-types@workspace:packages/shared-types"],
-
-    "@quoteworthy/web": ["@quoteworthy/web@workspace:apps/web"],
-
     "@radix-ui/number": ["@radix-ui/number@1.1.1", "", {}, "sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g=="],
 
     "@radix-ui/primitive": ["@radix-ui/primitive@1.1.3", "", {}, "sha512-JTF99U/6XIjCBo0wqkU5sK10glYe27MRRsfwoiq5zzOEZLHU3A3KCMa5X/azekYRCJ0HlwI0crAXS/5dEHTzDg=="],
@@ -611,6 +607,10 @@
     "@sentry/vercel-edge": ["@sentry/vercel-edge@10.53.1", "", { "dependencies": { "@opentelemetry/api": "^1.9.1", "@opentelemetry/resources": "^2.6.1", "@sentry/core": "10.53.1" } }, "sha512-waIOoLfhi1V3xEBJ1s1hpmvvgvcorYfsfm7fQGye0PgVjcBsZUqz32N5iEwkZ2Gz3n4ZOQYibDUqARJi9tOBcw=="],
 
     "@sentry/webpack-plugin": ["@sentry/webpack-plugin@5.3.0", "", { "dependencies": { "@sentry/bundler-plugin-core": "5.3.0" }, "peerDependencies": { "webpack": ">=5.0.0" } }, "sha512-i3OQUrS0FZlXLgq57RIKDp+vHHzuvYKPCKewAPXULWKMsBXFGhP6veGRQ+6To/pmZkkXjEX5ofVNDy9C3jEPKQ=="],
+
+    "@sepio/shared-types": ["@sepio/shared-types@workspace:packages/shared-types"],
+
+    "@sepio/web": ["@sepio/web@workspace:apps/web"],
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
 
