@@ -21,6 +21,7 @@ export type Database = {
           current_period_end: string | null
           deleted_at: string | null
           display_name: string | null
+          fal_flux_used_this_period: number
           id: string
           lemonsqueezy_customer_id: string | null
           lemonsqueezy_subscription_id: string | null
@@ -35,6 +36,7 @@ export type Database = {
           current_period_end?: string | null
           deleted_at?: string | null
           display_name?: string | null
+          fal_flux_used_this_period?: number
           id: string
           lemonsqueezy_customer_id?: string | null
           lemonsqueezy_subscription_id?: string | null
@@ -49,6 +51,7 @@ export type Database = {
           current_period_end?: string | null
           deleted_at?: string | null
           display_name?: string | null
+          fal_flux_used_this_period?: number
           id?: string
           lemonsqueezy_customer_id?: string | null
           lemonsqueezy_subscription_id?: string | null
@@ -216,6 +219,56 @@ export type Database = {
           },
         ]
       }
+      brand_platform_connections: {
+        Row: {
+          account_handle: string
+          brand_id: string
+          connected_at: string
+          id: string
+          last_error: string | null
+          last_used_at: string | null
+          metadata: Json
+          platform: string
+          status: string
+          updated_at: string
+          vault_secret_id: string | null
+        }
+        Insert: {
+          account_handle: string
+          brand_id: string
+          connected_at?: string
+          id?: string
+          last_error?: string | null
+          last_used_at?: string | null
+          metadata?: Json
+          platform: string
+          status?: string
+          updated_at?: string
+          vault_secret_id?: string | null
+        }
+        Update: {
+          account_handle?: string
+          brand_id?: string
+          connected_at?: string
+          id?: string
+          last_error?: string | null
+          last_used_at?: string | null
+          metadata?: Json
+          platform?: string
+          status?: string
+          updated_at?: string
+          vault_secret_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_platform_connections_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           account_id: string
@@ -281,6 +334,47 @@ export type Database = {
             columns: ["industry_category_id"]
             isOneToOne: false
             referencedRelation: "industry_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      data_deletion_requests: {
+        Row: {
+          app_scoped_user_id: string
+          completed_at: string | null
+          confirmation_code: string
+          id: string
+          internal_user_id: string | null
+          requested_at: string
+          source_platform: string
+          status: string
+        }
+        Insert: {
+          app_scoped_user_id: string
+          completed_at?: string | null
+          confirmation_code: string
+          id?: string
+          internal_user_id?: string | null
+          requested_at?: string
+          source_platform: string
+          status?: string
+        }
+        Update: {
+          app_scoped_user_id?: string
+          completed_at?: string | null
+          confirmation_code?: string
+          id?: string
+          internal_user_id?: string | null
+          requested_at?: string
+          source_platform?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_deletion_requests_internal_user_id_fkey"
+            columns: ["internal_user_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -607,6 +701,92 @@ export type Database = {
           },
         ]
       }
+      publish_attempts: {
+        Row: {
+          attempt_number: number
+          attempted_at: string
+          brand_id: string
+          connection_id: string | null
+          error_code: string | null
+          error_message: string | null
+          external_post_id: string | null
+          id: string
+          inngest_event_id: string | null
+          oauth_token_id: string | null
+          platform: string
+          post_id: string
+          retry_after_at: string | null
+          status: string
+          succeeded_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_number?: number
+          attempted_at?: string
+          brand_id: string
+          connection_id?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          external_post_id?: string | null
+          id?: string
+          inngest_event_id?: string | null
+          oauth_token_id?: string | null
+          platform: string
+          post_id: string
+          retry_after_at?: string | null
+          status: string
+          succeeded_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_number?: number
+          attempted_at?: string
+          brand_id?: string
+          connection_id?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          external_post_id?: string | null
+          id?: string
+          inngest_event_id?: string | null
+          oauth_token_id?: string | null
+          platform?: string
+          post_id?: string
+          retry_after_at?: string | null
+          status?: string
+          succeeded_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "publish_attempts_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "publish_attempts_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "brand_platform_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "publish_attempts_oauth_token_id_fkey"
+            columns: ["oauth_token_id"]
+            isOneToOne: false
+            referencedRelation: "brand_oauth_tokens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "publish_attempts_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       topic_candidates: {
         Row: {
           brand_id: string
@@ -690,6 +870,10 @@ export type Database = {
       immutable_array_to_string: {
         Args: { arr: string[]; delim: string }
         Returns: string
+      }
+      increment_fal_flux_atomic: {
+        Args: { p_account_id: string; p_limit: number }
+        Returns: boolean
       }
       increment_topic_impressions: {
         Args: { p_candidate_ids: string[] }
