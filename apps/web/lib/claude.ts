@@ -3,6 +3,7 @@ import type { Tables } from "./supabase/database.types";
 import {
   FORMAT_SPECS,
   modelIdForTier,
+  TEMPERATURE_BY_FORMAT,
   type GenFormat,
 } from "./_private/format-specs";
 
@@ -188,6 +189,7 @@ async function callClaude(
       {
         model: modelIdForTier(spec.model),
         max_tokens: spec.maxTokens,
+        temperature: TEMPERATURE_BY_FORMAT[format],
         system: [
           {
             type: "text",
