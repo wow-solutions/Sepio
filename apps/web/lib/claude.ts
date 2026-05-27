@@ -1,19 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Tables } from "./supabase/database.types";
+import {
+  FORMAT_SPECS,
+  modelIdForTier,
+  type GenFormat,
+} from "./_private/format-specs";
 
-// Sprint 1A writer — Sonnet 4.6 LinkedIn-style draft generation.
-//
-// Caching strategy:
-//   Render order is tools → system → messages. Brand context (voice, VOC,
-//   forbidden words, voice samples) is stable for a given brand and goes in
-//   the system block with cache_control. Topic hint changes per request and
-//   goes in the user message — never part of the cached prefix.
-//
-//   Sonnet 4.6 minimum cacheable prefix = 2048 tokens. Voice samples + VOC
-//   typically push past that on the second+ generate call for a brand.
-
-const MODEL = "claude-sonnet-4-6";
-const MAX_TOKENS = 800; // ~150-250 word post + safety headroom
+// Per-format draft generation. Two cached system blocks:
+//   1. Brand context (voice, VOC, samples) — stable per brand, so one topic
+//      fanned out to N formats is a cache hit across all N calls.
+//   2. The per-format directive (length / structure / behavioral signal) —
+//      stable per format.
+// Topic goes in the user message — never part of the cached prefix. Model +
+// token budget come from the format spec (short formats → Haiku, long → Sonnet).
 
 export type BrandConfigRow = Tables<"brand_configs">;
 
@@ -61,14 +60,15 @@ export function buildBrandContext(
 ): string {
   const langName = LANGUAGE_NAMES[primaryLanguage] ?? primaryLanguage;
   const parts: string[] = [
-    "You write LinkedIn-style posts for a specific brand.",
+    "You are a content writer for a specific brand. Write everything in the brand's voice.",
     // Language instruction is intentionally near the top — Claude follows
     // it more reliably than if it were buried. Stated explicitly so the
     // model ignores the language of the topic hint (which may be entered
     // in any language by the user).
-    `Write the post in ${langName}, regardless of what language the topic hint is written in.`,
-    "Output ONLY the post body. No preamble, no surrounding quotes, no 'Here is...' framing.",
-    "Length: 150-250 words. Punchy opener. One concrete idea. Optional question to invite replies.",
+    `Write in ${langName}, regardless of what language the topic hint is written in.`,
+    "Output ONLY the content itself. No preamble, no surrounding quotes, no 'Here is...' framing.",
+    // Format-specific rules (length, structure, behavioral signal) are injected
+    // separately as the format directive block — not here.
   ];
 
   if (config.brand_voice) {
@@ -128,13 +128,14 @@ export async function generatePost(
   config: BrandConfigRow,
   primaryLanguage: string,
   topicHint: string | undefined,
+  format: GenFormat = "linkedin_post",
   opts?: { apiKey?: string; signal?: AbortSignal },
 ): Promise<GenerateResult> {
   const hint = topicHint?.trim();
   const userText = hint
-    ? `Write a post about: ${hint}`
-    : "Write a post about something timely and relevant to this brand's audience.";
-  return callClaude(config, primaryLanguage, userText, opts);
+    ? `Topic to write about: ${hint}`
+    : "Choose a topic that is timely and relevant to this brand's audience.";
+  return callClaude(config, primaryLanguage, userText, format, opts);
 }
 
 // Adapt a longer source (blog article, newsletter, etc.) into a LinkedIn
@@ -161,13 +162,14 @@ export async function adaptToLinkedIn(
     "SOURCE ARTICLE:",
     trimmed,
   ].join("\n");
-  return callClaude(config, primaryLanguage, userText, opts);
+  return callClaude(config, primaryLanguage, userText, "linkedin_post", opts);
 }
 
 async function callClaude(
   config: BrandConfigRow,
   primaryLanguage: string,
   userText: string,
+  format: GenFormat,
   opts?: { apiKey?: string; signal?: AbortSignal },
 ): Promise<GenerateResult> {
   const apiKey = opts?.apiKey ?? process.env.ANTHROPIC_API_KEY;
@@ -178,17 +180,23 @@ async function callClaude(
   const client = new Anthropic({ apiKey });
 
   const systemText = buildBrandContext(config, primaryLanguage);
+  const spec = FORMAT_SPECS[format];
 
   let response: Anthropic.Message;
   try {
     response = await client.messages.create(
       {
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
+        model: modelIdForTier(spec.model),
+        max_tokens: spec.maxTokens,
         system: [
           {
             type: "text",
             text: systemText,
+            cache_control: { type: "ephemeral" },
+          },
+          {
+            type: "text",
+            text: spec.directive,
             cache_control: { type: "ephemeral" },
           },
         ],

@@ -111,7 +111,7 @@ describe("generatePost — auth & validation", () => {
     // missing-key one).
     let err: unknown;
     try {
-      await generatePost(fixtureConfig(), "en", undefined, {
+      await generatePost(fixtureConfig(), "en", undefined, "linkedin_post", {
         apiKey: "sk-ant-test-key-not-real",
         signal: AbortSignal.timeout(1),
       });
