@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { SepioMark } from "@/components/shell/sepio-mark";
+import { adaptFor, type Platform } from "@/lib/format-adapter";
 import { saveDraft } from "./actions";
 import { TopicPicker } from "./_components/topic-picker";
 
@@ -1257,9 +1258,20 @@ function LivePreview({
   onClose: () => void;
 }) {
   const t = useTranslations("writer");
+  const [platform, setPlatform] = useState<Platform>("linkedin");
   const hasContent = content.trim().length > 0;
-  // Only LinkedIn is wired (ADR-0019); the rest are shown as "soon" tabs.
-  const soonTabs = ["Telegram", "Instagram", "TikTok", "Threads", "Blog"];
+  // Live platforms run the format adapter; the rest stay "soon" (Phase 2).
+  const livePlatforms: Platform[] = ["linkedin", "telegram", "blog"];
+  const soonTabs = ["Instagram", "TikTok", "Threads"];
+  const platformLabel: Record<Platform, string> = {
+    linkedin: "LinkedIn",
+    telegram: "Telegram",
+    blog: "Blog",
+  };
+  const adapted = useMemo(
+    () => adaptFor(platform, { text: content }),
+    [platform, content],
+  );
   return (
     <aside
       style={{
@@ -1309,7 +1321,14 @@ function LivePreview({
           overflowX: "auto",
         }}
       >
-        <PreviewTab label="LinkedIn" active />
+        {livePlatforms.map((p) => (
+          <PreviewTab
+            key={p}
+            label={platformLabel[p]}
+            active={p === platform}
+            onClick={() => setPlatform(p)}
+          />
+        ))}
         {soonTabs.map((p) => (
           <PreviewTab key={p} label={p} soon={t("previewSoon")} />
         ))}
@@ -1323,7 +1342,30 @@ function LivePreview({
         }}
       >
         {hasContent ? (
-          <LinkedInPreviewCard brandName={brandName} content={content} />
+          <>
+            {adapted.platform === "linkedin" && (
+              <LinkedInPreviewCard
+                brandName={brandName}
+                text={adapted.text}
+                firstComment={adapted.firstComment}
+              />
+            )}
+            {adapted.platform === "telegram" && (
+              <TelegramPreviewCard
+                brandName={brandName}
+                html={adapted.text}
+                asCaption={adapted.asCaption}
+              />
+            )}
+            {adapted.platform === "blog" && (
+              <BlogPreviewCard
+                title={adapted.title}
+                meta={adapted.metaDescription}
+                body={adapted.bodyMarkdown}
+              />
+            )}
+            <PreviewWarnings warnings={adapted.warnings} />
+          </>
         ) : (
           <PreviewPlaceholder text={t("previewEmpty")} />
         )}
@@ -1336,29 +1378,31 @@ function PreviewTab({
   label,
   active,
   soon,
+  onClick,
 }: {
   label: string;
   active?: boolean;
   soon?: string;
+  onClick?: () => void;
 }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 12px",
-        borderRadius: 9999,
-        whiteSpace: "nowrap",
-        flexShrink: 0,
-        fontFamily: "var(--font-sans)",
-        fontSize: 11.5,
-        fontWeight: 500,
-        background: active ? "rgba(176,123,80,0.16)" : "rgba(255,255,255,0.03)",
-        border: `1px solid ${active ? "rgba(176,123,80,0.32)" : "var(--border-subtle)"}`,
-        color: active ? "var(--ink)" : "var(--ink-faint)",
-      }}
-    >
+  const style: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 12px",
+    borderRadius: 9999,
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+    fontFamily: "var(--font-sans)",
+    fontSize: 11.5,
+    fontWeight: 500,
+    background: active ? "rgba(176,123,80,0.16)" : "rgba(255,255,255,0.03)",
+    border: `1px solid ${active ? "rgba(176,123,80,0.32)" : "var(--border-subtle)"}`,
+    color: active ? "var(--ink)" : "var(--ink-faint)",
+    cursor: onClick ? "pointer" : "default",
+  };
+  const inner = (
+    <>
       {label}
       {soon && (
         <span
@@ -1374,18 +1418,28 @@ function PreviewTab({
           {soon}
         </span>
       )}
-    </span>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} style={style}>
+        {inner}
+      </button>
+    );
+  }
+  return <span style={style}>{inner}</span>;
 }
 
 // Faithful LinkedIn post card — light surface, native LinkedIn styling. Per
 // the brand lock, light surfaces are allowed for embedded social previews.
 function LinkedInPreviewCard({
   brandName,
-  content,
+  text,
+  firstComment,
 }: {
   brandName: string;
-  content: string;
+  text: string;
+  firstComment: string | null;
 }) {
   const initial = (brandName.trim()[0] ?? "S").toUpperCase();
   return (
@@ -1446,8 +1500,23 @@ function LinkedInPreviewCard({
           overflowWrap: "anywhere",
         }}
       >
-        {content}
+        {text}
       </div>
+      {firstComment && (
+        <div
+          style={{
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: "1px solid #e5e5e5",
+            fontSize: 11,
+            color: "#5a5a5a",
+            overflowWrap: "anywhere",
+          }}
+        >
+          <span style={{ color: "#0a66c2", fontWeight: 600 }}>↳ first comment</span>{" "}
+          {firstComment}
+        </div>
+      )}
       <div
         style={{
           display: "flex",
@@ -1464,6 +1533,163 @@ function LinkedInPreviewCard({
         <span>↗ Share</span>
       </div>
     </div>
+  );
+}
+
+// Telegram channel post. The adapter emits HTML parse-mode text (first line
+// bolded, rest HTML-escaped) — safe to render directly since the adapter
+// escapes all user content and only adds <b> tags it controls.
+function TelegramPreviewCard({
+  brandName,
+  html,
+  asCaption,
+}: {
+  brandName: string;
+  html: string;
+  asCaption: boolean;
+}) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        color: "#0a0a0a",
+        borderRadius: 12,
+        padding: 16,
+        fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+        boxShadow: "0 16px 40px -12px rgba(0,0,0,0.5)",
+        marginTop: 8,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <div
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "50%",
+            background: "#229ED9",
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 14,
+            flexShrink: 0,
+          }}
+        >
+          ✈
+        </div>
+        <div style={{ fontWeight: 600, fontSize: 12.5, color: "#0a0a0a" }}>{brandName}</div>
+      </div>
+      <div
+        style={{
+          fontSize: 13,
+          lineHeight: 1.5,
+          color: "#0a0a0a",
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+        }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <div style={{ marginTop: 10, fontSize: 10.5, color: "#8a8a8a" }}>
+        {asCaption ? "photo caption · HTML" : "channel message · HTML"}
+      </div>
+    </div>
+  );
+}
+
+// Blog article preview: title tag, meta description, and body. Markdown body
+// is shown as source (faithful enough for a preview; full render is polish).
+function BlogPreviewCard({
+  title,
+  meta,
+  body,
+}: {
+  title: string;
+  meta: string;
+  body: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        color: "#0a0a0a",
+        borderRadius: 12,
+        padding: 18,
+        boxShadow: "0 16px 40px -12px rgba(0,0,0,0.5)",
+        marginTop: 8,
+      }}
+    >
+      <h3
+        style={{
+          margin: "0 0 6px",
+          fontFamily: "Georgia, serif",
+          fontSize: 18,
+          fontWeight: 700,
+          lineHeight: 1.25,
+          color: "#0a0a0a",
+        }}
+      >
+        {title || "Untitled"}
+      </h3>
+      <div
+        style={{
+          fontSize: 11,
+          color: "#6a6a6a",
+          marginBottom: 12,
+          fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+        }}
+      >
+        meta · {meta || "—"}
+      </div>
+      <div
+        style={{
+          fontSize: 13,
+          lineHeight: 1.6,
+          color: "#1a1a1a",
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+          fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+        }}
+      >
+        {body}
+      </div>
+    </div>
+  );
+}
+
+// Adapter notes — what the rule-based adapter changed or flagged for this
+// platform (links moved, hashtags trimmed, length over budget, etc.).
+function PreviewWarnings({ warnings }: { warnings: string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <ul
+      style={{
+        listStyle: "none",
+        margin: "14px 0 0",
+        padding: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}
+    >
+      {warnings.map((w, i) => (
+        <li
+          key={i}
+          style={{
+            display: "flex",
+            gap: 8,
+            fontSize: 11,
+            lineHeight: 1.4,
+            color: "var(--ink-faint)",
+            fontFamily: "var(--font-sans)",
+          }}
+        >
+          <span aria-hidden style={{ color: "#b07b50", flexShrink: 0 }}>
+            ⚠
+          </span>
+          <span>{w}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
