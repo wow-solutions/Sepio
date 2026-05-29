@@ -58,6 +58,9 @@ claude-memory-compiler/
 # Outputs (датированные экспорты — не коммитим)
 outputs/
 
+# Repositioning research dialogs (Claude/GPT/etc) — sensitive, kept local
+raw/repositioning/
+
 # Obsidian workspace state (но конфиги — оставляем)
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
