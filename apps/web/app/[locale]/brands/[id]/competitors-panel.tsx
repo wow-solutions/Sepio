@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
   addCompetitor,
-  getDifferentiationStatus,
-  recomputeMarketBrain,
   setCompetitorStatus,
   type CompetitorActionResult,
 } from "./actions";
@@ -19,24 +17,21 @@ const KNOWN_ERRORS = [
   "duplicate",
   "brandNotFound",
   "noBetaAccess",
+  "network",
 ];
 
-// Recompute progress: poll computed_at every POLL_MS, give up after TIMEOUT_S.
+// Recompute runs inline in the route handler; the fetch resolves when it's done.
 // EXPECTED_S drives the estimated bar (scrape ≤5 pages × N competitors + 1 LLM).
-const POLL_MS = 4000;
-const TIMEOUT_S = 240;
 const EXPECTED_S = 90;
 
-type RecomputePhase = "idle" | "running" | "done" | "timeout";
+type RecomputePhase = "idle" | "running" | "done";
 
 export function CompetitorsPanel({
   brandId,
   competitors,
-  differentiationComputedAt,
 }: {
   brandId: string;
   competitors: Competitor[];
-  differentiationComputedAt: string | null;
 }) {
   const t = useTranslations("brandDetail.marketBrain");
   const router = useRouter();
@@ -46,32 +41,13 @@ export function CompetitorsPanel({
 
   const [phase, setPhase] = useState<RecomputePhase>("idle");
   const [elapsed, setElapsed] = useState(0);
-  // computed_at the page rendered with — a change means the worker finished.
-  const baselineRef = useRef<string | null>(differentiationComputedAt);
 
-  // Poll + timer while a recompute is running.
+  // Tick the elapsed timer while a recompute is in flight (drives bar + label).
   useEffect(() => {
     if (phase !== "running") return;
-
     const timer = setInterval(() => setElapsed((e) => e + 1), 1000);
-
-    const poll = setInterval(async () => {
-      const { computedAt } = await getDifferentiationStatus(brandId);
-      if (computedAt && computedAt !== baselineRef.current) {
-        setPhase("done");
-        router.refresh();
-      }
-    }, POLL_MS);
-
-    // Give up after TIMEOUT_S — deferred (not a synchronous setState in the effect).
-    const timeout = setTimeout(() => setPhase("timeout"), TIMEOUT_S * 1000);
-
-    return () => {
-      clearInterval(timer);
-      clearInterval(poll);
-      clearTimeout(timeout);
-    };
-  }, [phase, brandId, router]);
+    return () => clearInterval(timer);
+  }, [phase]);
 
   function resolveError(key: string): string {
     return KNOWN_ERRORS.includes(key) ? t(`error.${key}`) : key;
@@ -79,7 +55,7 @@ export function CompetitorsPanel({
 
   function run(
     fn: () => Promise<CompetitorActionResult>,
-    opts?: { onOk?: () => void; refresh?: boolean },
+    opts?: { onOk?: () => void },
   ) {
     setError(null);
     startTransition(async () => {
@@ -89,22 +65,35 @@ export function CompetitorsPanel({
         return;
       }
       opts?.onOk?.();
-      if (opts?.refresh !== false) router.refresh();
+      router.refresh();
     });
   }
 
-  function startRecompute() {
+  async function startRecompute() {
     setError(null);
-    baselineRef.current = differentiationComputedAt;
-    startTransition(async () => {
-      const res = await recomputeMarketBrain(brandId);
-      if (!res.ok) {
-        setError(resolveError(res.error));
-        return;
-      }
-      setElapsed(0);
-      setPhase("running");
-    });
+    setElapsed(0);
+    setPhase("running");
+
+    let res: Response;
+    try {
+      res = await fetch(`/api/brands/${brandId}/recompute-market-brain`, {
+        method: "POST",
+      });
+    } catch {
+      setPhase("idle");
+      setError(resolveError("network"));
+      return;
+    }
+
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      setPhase("idle");
+      setError(resolveError(data?.error ?? `HTTP ${res.status}`));
+      return;
+    }
+
+    setPhase("done");
+    router.refresh();
   }
 
   const approvedCount = competitors.filter((c) => c.status === "approved").length;
@@ -262,7 +251,6 @@ export function CompetitorsPanel({
       )}
 
       {phase === "done" && <Note tone="ok">{t("recomputeDone")}</Note>}
-      {phase === "timeout" && <Note tone="error">{t("recomputeTimeout")}</Note>}
       {error && <Note tone="error">{error}</Note>}
     </div>
   );

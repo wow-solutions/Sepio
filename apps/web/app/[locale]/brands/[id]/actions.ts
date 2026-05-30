@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { deleteSecret } from "@/lib/vault";
 import { parseCompetitorUrl } from "@/lib/market-brain/competitor-input";
-import { triggerMarketBrainForBrand } from "@/lib/market-brain/trigger-worker";
 
 // Error fields are i18n keys (brandDetail.marketBrain.error.*), resolved client-side.
 export type CompetitorActionResult = { ok: true } | { ok: false; error: string };
@@ -110,53 +109,6 @@ export async function setCompetitorStatus(
   return { ok: true };
 }
 
-// Manual "recompute now" — kicks the per-brand worker fire-and-forget. Gated by
-// beta_access (same lock the cron honours); cron weekly is the passive path.
-export async function recomputeMarketBrain(
-  brandId: string,
-): Promise<CompetitorActionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "notSignedIn" };
-
-  const { data: brand } = await supabase
-    .from("brands")
-    .select("id")
-    .eq("id", brandId)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (!brand) return { ok: false, error: "brandNotFound" };
-
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("beta_access")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!account?.beta_access) return { ok: false, error: "noBetaAccess" };
-
-  triggerMarketBrainForBrand(brandId);
-  return { ok: true };
-}
-
-// Polled by the panel after a recompute to detect completion: when computed_at
-// changes from the baseline the page rendered with, the worker has written a
-// fresh row and the UI can auto-refresh. RLS scopes the read to owned brands.
-export async function getDifferentiationStatus(
-  brandId: string,
-): Promise<{ computedAt: string | null }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { computedAt: null };
-
-  const { data } = await supabase
-    .from("market_differentiation")
-    .select("computed_at")
-    .eq("brand_id", brandId)
-    .maybeSingle();
-
-  return { computedAt: data?.computed_at ?? null };
-}
+// Manual "recompute now" runs inline in POST /api/brands/[brandId]/recompute-market-brain
+// (user-session auth, worker awaited) — the browser calls it directly. See that
+// route for why we don't use a fire-and-forget server action here.

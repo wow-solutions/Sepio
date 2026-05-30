@@ -142,7 +142,8 @@
         "notSignedIn": "You're signed out. Refresh and try again.",
         "duplicate": "You're already tracking that competitor.",
         "brandNotFound": "Brand not found.",
-        "noBetaAccess": "Market Brain isn't enabled for this account yet."
+        "noBetaAccess": "Market Brain isn't enabled for this account yet.",
+        "network": "Network error. Try again."
       }
     }
   },

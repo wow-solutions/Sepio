@@ -72,15 +72,13 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
     : [];
 
   let differentiation: ReturnType<typeof DifferentiationSchema.safeParse> | null = null;
-  let differentiationComputedAt: string | null = null;
   if (betaAccess) {
     const { data: diffRow } = await supabase
       .from("market_differentiation")
-      .select("common_themes, positioning_gaps, computed_at")
+      .select("common_themes, positioning_gaps")
       .eq("brand_id", brandId)
       .maybeSingle();
     if (diffRow) {
-      differentiationComputedAt = diffRow.computed_at;
       // Re-validate the persisted jsonb at the read boundary (RLS proves
       // ownership, not shape) — same discipline as the generation seam (PR-A).
       differentiation = DifferentiationSchema.safeParse(diffRow);
@@ -303,11 +301,7 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
             </p>
 
             <h3 style={subHeadingStyle()}>{t("marketBrain.competitorsHeader")}</h3>
-            <CompetitorsPanel
-              brandId={brand.id}
-              competitors={competitors}
-              differentiationComputedAt={differentiationComputedAt}
-            />
+            <CompetitorsPanel brandId={brand.id} competitors={competitors} />
 
             <h3 style={{ ...subHeadingStyle(), marginTop: 28 }}>
               {t("marketBrain.differentiationHeader")}
