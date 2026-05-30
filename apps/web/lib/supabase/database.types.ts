@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       accounts: {
         Row: {
+          beta_access: boolean
           brands_count: number
           created_at: string
           current_period_end: string | null
@@ -31,6 +32,7 @@ export type Database = {
           trial_ends_at: string | null
         }
         Insert: {
+          beta_access?: boolean
           brands_count?: number
           created_at?: string
           current_period_end?: string | null
@@ -46,6 +48,7 @@ export type Database = {
           trial_ends_at?: string | null
         }
         Update: {
+          beta_access?: boolean
           brands_count?: number
           created_at?: string
           current_period_end?: string | null
