@@ -41,6 +41,26 @@ export type GenerateResult = {
 type VocItem = { quote: string; source?: string };
 type VoiceSample = { text: string; source?: string };
 
+// ── Context injection seam (T4) ─────────────────────────────────────────────
+// A pre-rendered, brand-stable context section. Future moat/voice features
+// (Market Brain differentiation, voice fingerprint, client-brain research,
+// proof library) each compute their block UPSTREAM — where they own their own
+// async DB reads — and hand the finished text in via `extraContext`. The block
+// is folded into the cached brand-context system block (block 1) BEFORE its
+// cache breakpoint, so a topic fanned to N formats stays a cache hit and no
+// feature has to re-edit prompt assembly here (avoids the merge race).
+//
+// Contract: a self-contained Markdown section that already starts with its own
+// "# Heading", matching buildBrandContext's convention. Order is caller-
+// controlled (array order). Empty/blank blocks are dropped.
+export type ContextBlock = string;
+
+export type GenerateOptions = {
+  apiKey?: string;
+  signal?: AbortSignal;
+  extraContext?: ContextBlock[];
+};
+
 function asArray<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
@@ -58,6 +78,7 @@ const LANGUAGE_NAMES: Record<string, string> = {
 export function buildBrandContext(
   config: BrandConfigRow,
   primaryLanguage: string,
+  extraContext: ContextBlock[] = [],
 ): string {
   const langName = LANGUAGE_NAMES[primaryLanguage] ?? primaryLanguage;
   const parts: string[] = [
@@ -122,6 +143,13 @@ export function buildBrandContext(
     );
   }
 
+  // Context injection seam: append upstream-computed brand-stable blocks, in
+  // order, dropping blanks. Stays inside block 1 (pre-cache-breakpoint).
+  for (const block of extraContext) {
+    const trimmed = block.trim();
+    if (trimmed) parts.push(trimmed);
+  }
+
   return parts.join("\n\n");
 }
 
@@ -130,7 +158,7 @@ export async function generatePost(
   primaryLanguage: string,
   topicHint: string | undefined,
   format: GenFormat = "linkedin_post",
-  opts?: { apiKey?: string; signal?: AbortSignal },
+  opts?: GenerateOptions,
 ): Promise<GenerateResult> {
   const hint = topicHint?.trim();
   const userText = hint
@@ -147,7 +175,7 @@ export async function adaptToLinkedIn(
   config: BrandConfigRow,
   primaryLanguage: string,
   sourceText: string,
-  opts?: { apiKey?: string; signal?: AbortSignal },
+  opts?: GenerateOptions,
 ): Promise<GenerateResult> {
   const trimmed = sourceText.trim();
   if (!trimmed) {
@@ -171,7 +199,7 @@ async function callClaude(
   primaryLanguage: string,
   userText: string,
   format: GenFormat,
-  opts?: { apiKey?: string; signal?: AbortSignal },
+  opts?: GenerateOptions,
 ): Promise<GenerateResult> {
   const apiKey = opts?.apiKey ?? process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -180,7 +208,11 @@ async function callClaude(
 
   const client = new Anthropic({ apiKey });
 
-  const systemText = buildBrandContext(config, primaryLanguage);
+  const systemText = buildBrandContext(
+    config,
+    primaryLanguage,
+    opts?.extraContext,
+  );
   const spec = FORMAT_SPECS[format];
 
   let response: Anthropic.Message;

@@ -87,6 +87,45 @@ describe("buildBrandContext", () => {
   });
 });
 
+describe("buildBrandContext — context injection seam (T4)", () => {
+  test("no extraContext leaves output identical to two-arg call", () => {
+    const withDefault = buildBrandContext(fixtureConfig(), "en");
+    const withEmpty = buildBrandContext(fixtureConfig(), "en", []);
+    expect(withEmpty).toBe(withDefault);
+  });
+
+  test("appends injected blocks after the brand context", () => {
+    const cfg = fixtureConfig({
+      voice_samples: [{ text: "How the brand writes." }],
+    });
+    const ctx = buildBrandContext(cfg, "en", ["# Market differentiation\nWe do X."]);
+    expect(ctx).toContain("# Market differentiation\nWe do X.");
+    // Seam lands after the existing brand context (voice samples are last).
+    expect(ctx.indexOf("# Market differentiation")).toBeGreaterThan(
+      ctx.indexOf("# Voice samples"),
+    );
+  });
+
+  test("preserves caller order across multiple blocks", () => {
+    const ctx = buildBrandContext(fixtureConfig(), "en", [
+      "# First\na",
+      "# Second\nb",
+    ]);
+    expect(ctx.indexOf("# First")).toBeLessThan(ctx.indexOf("# Second"));
+  });
+
+  test("drops blank and whitespace-only blocks", () => {
+    const ctx = buildBrandContext(fixtureConfig(), "en", [
+      "",
+      "   \n  ",
+      "# Kept\nreal content",
+    ]);
+    expect(ctx).toContain("# Kept");
+    // No empty separators leak in from the dropped blocks.
+    expect(ctx).not.toMatch(/\n\n\n\n/);
+  });
+});
+
 describe("generatePost — auth & validation", () => {
   let originalKey: string | undefined;
 
