@@ -22,6 +22,11 @@ function fixtureConfig(overrides: Partial<BrandConfig> = {}): BrandConfig {
     style_guide: null,
     approval_mode: "manual",
     voice_samples: [],
+    services: [],
+    locations: [],
+    pricing: [],
+    forbidden_claims: [],
+    voice_fingerprint: null,
     ...overrides,
   };
 }

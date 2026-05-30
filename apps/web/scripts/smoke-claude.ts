@@ -22,6 +22,11 @@ const fixture: Tables<"brand_configs"> = {
   style_guide: null,
   approval_mode: "manual",
   voice_samples: [],
+  services: [],
+  locations: [],
+  pricing: [],
+  forbidden_claims: [],
+  voice_fingerprint: null,
 };
 
 const start = Date.now();

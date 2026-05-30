@@ -46,6 +46,11 @@ const fixture: Tables<"brand_configs"> = {
   internal_links_map: [],
   style_guide: null,
   approval_mode: "manual",
+  services: [],
+  locations: [],
+  pricing: [],
+  forbidden_claims: [],
+  voice_fingerprint: null,
   voice_samples: [
     { text: SAMPLE_3_WIKI, source: "ru.wikipedia.org/Кондиционер, revid 65923970 (2014-10-02)" },
     { text: SAMPLE_1, source: "Григорий, summary 1" },

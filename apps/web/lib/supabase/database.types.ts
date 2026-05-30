@@ -116,17 +116,22 @@ export type Database = {
           approval_mode: string
           brand_id: string
           brand_voice: string | null
+          forbidden_claims: Json
           forbidden_words: string[] | null
           internal_links_map: Json | null
+          locations: Json
+          pricing: Json
           required_phrases: string[] | null
           seo_keywords_primary: string[] | null
           seo_keywords_secondary: string[] | null
+          services: Json
           style_guide: string | null
           tone_attributes: string[] | null
           trigger_events: string[] | null
           updated_at: string
           voc_desired_outcomes: Json | null
           voc_pain_points: Json | null
+          voice_fingerprint: Json | null
           voice_samples: Json
         }
         Insert: {
@@ -134,17 +139,22 @@ export type Database = {
           approval_mode?: string
           brand_id: string
           brand_voice?: string | null
+          forbidden_claims?: Json
           forbidden_words?: string[] | null
           internal_links_map?: Json | null
+          locations?: Json
+          pricing?: Json
           required_phrases?: string[] | null
           seo_keywords_primary?: string[] | null
           seo_keywords_secondary?: string[] | null
+          services?: Json
           style_guide?: string | null
           tone_attributes?: string[] | null
           trigger_events?: string[] | null
           updated_at?: string
           voc_desired_outcomes?: Json | null
           voc_pain_points?: Json | null
+          voice_fingerprint?: Json | null
           voice_samples?: Json
         }
         Update: {
@@ -152,17 +162,22 @@ export type Database = {
           approval_mode?: string
           brand_id?: string
           brand_voice?: string | null
+          forbidden_claims?: Json
           forbidden_words?: string[] | null
           internal_links_map?: Json | null
+          locations?: Json
+          pricing?: Json
           required_phrases?: string[] | null
           seo_keywords_primary?: string[] | null
           seo_keywords_secondary?: string[] | null
+          services?: Json
           style_guide?: string | null
           tone_attributes?: string[] | null
           trigger_events?: string[] | null
           updated_at?: string
           voc_desired_outcomes?: Json | null
           voc_pain_points?: Json | null
+          voice_fingerprint?: Json | null
           voice_samples?: Json
         }
         Relationships: [
@@ -596,6 +611,47 @@ export type Database = {
           },
         ]
       }
+      market_competitors: {
+        Row: {
+          added_by: string | null
+          brand_id: string
+          created_at: string
+          domain: string
+          id: string
+          source: string
+          status: string
+          url: string
+        }
+        Insert: {
+          added_by?: string | null
+          brand_id: string
+          created_at?: string
+          domain: string
+          id?: string
+          source?: string
+          status?: string
+          url: string
+        }
+        Update: {
+          added_by?: string | null
+          brand_id?: string
+          created_at?: string
+          domain?: string
+          id?: string
+          source?: string
+          status?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_competitors_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           approved_at: string | null
@@ -694,6 +750,50 @@ export type Database = {
           },
           {
             foreignKeyName: "posts_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proof_items: {
+        Row: {
+          asset_url: string | null
+          body: string
+          brand_id: string
+          created_at: string
+          id: string
+          kind: string
+          source: string | null
+          updated_at: string
+          verifiable: boolean
+        }
+        Insert: {
+          asset_url?: string | null
+          body: string
+          brand_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          source?: string | null
+          updated_at?: string
+          verifiable?: boolean
+        }
+        Update: {
+          asset_url?: string | null
+          body?: string
+          brand_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          source?: string | null
+          updated_at?: string
+          verifiable?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proof_items_brand_id_fkey"
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
