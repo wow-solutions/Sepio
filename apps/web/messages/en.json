@@ -115,7 +115,33 @@
       "reconnect": "Reconnect",
       "disconnect": "Disconnect"
     },
-    "settingsLink": "Edit brand settings →"
+    "settingsLink": "Edit brand settings →",
+    "marketBrain": {
+      "header": "Market Brain",
+      "subtitle": "Competitor differentiation that grounds generation. Updated weekly, or recompute on demand.",
+      "competitorsHeader": "Competitors",
+      "differentiationHeader": "Differentiation",
+      "differentiationEmpty": "No differentiation computed yet. Add at least two competitors, then recompute.",
+      "themesLabel": "Shared themes competitors emphasize",
+      "gapsLabel": "Positioning gaps you could own",
+      "prevalenceLabel": "competitors",
+      "addPlaceholder": "competitor.com",
+      "addButton": "Add",
+      "empty": "No competitors yet. Add the sites you compete with.",
+      "disabledTag": "disabled",
+      "enable": "Enable",
+      "disable": "Disable",
+      "recompute": "Recompute now",
+      "recomputeHint": "Scrapes competitors and recomputes differentiation.",
+      "recomputeQueued": "Recomputing — refresh in a minute to see results.",
+      "error": {
+        "invalidUrl": "Enter a valid website (e.g. competitor.com).",
+        "notSignedIn": "You're signed out. Refresh and try again.",
+        "duplicate": "You're already tracking that competitor.",
+        "brandNotFound": "Brand not found.",
+        "noBetaAccess": "Market Brain isn't enabled for this account yet."
+      }
+    }
   },
   "brandSettings": {
     "breadcrumb": "Settings",
