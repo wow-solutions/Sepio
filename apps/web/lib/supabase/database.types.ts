@@ -652,6 +652,77 @@ export type Database = {
           },
         ]
       }
+      market_differentiation: {
+        Row: {
+          brand_id: string
+          common_themes: Json
+          computed_at: string
+          id: string
+          model: string | null
+          positioning_gaps: Json
+          prompt_version: string | null
+          source_domains: string[] | null
+        }
+        Insert: {
+          brand_id: string
+          common_themes?: Json
+          computed_at?: string
+          id?: string
+          model?: string | null
+          positioning_gaps?: Json
+          prompt_version?: string | null
+          source_domains?: string[] | null
+        }
+        Update: {
+          brand_id?: string
+          common_themes?: Json
+          computed_at?: string
+          id?: string
+          model?: string | null
+          positioning_gaps?: Json
+          prompt_version?: string | null
+          source_domains?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_differentiation_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: true
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      market_scrape_cache: {
+        Row: {
+          domain: string
+          expires_at: string
+          extracted: Json | null
+          fetched_at: string
+          id: string
+          robots_allowed: boolean | null
+          status_code: number | null
+        }
+        Insert: {
+          domain: string
+          expires_at?: string
+          extracted?: Json | null
+          fetched_at?: string
+          id?: string
+          robots_allowed?: boolean | null
+          status_code?: number | null
+        }
+        Update: {
+          domain?: string
+          expires_at?: string
+          extracted?: Json | null
+          fetched_at?: string
+          id?: string
+          robots_allowed?: boolean | null
+          status_code?: number | null
+        }
+        Relationships: []
+      }
       posts: {
         Row: {
           approved_at: string | null
