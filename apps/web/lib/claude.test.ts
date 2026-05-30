@@ -124,6 +124,24 @@ describe("buildBrandContext — context injection seam (T4)", () => {
     // No empty separators leak in from the dropped blocks.
     expect(ctx).not.toMatch(/\n\n\n\n/);
   });
+
+  // Cache invariant (T8 / Codex F4): the injected block lives in the brand-
+  // context system block (block 1), which is format-independent. callClaude
+  // builds the per-format directive as a SEPARATE block. So two formats for the
+  // same brand + same extraContext share an identical block 1 → cache hit. The
+  // real invariant is "block 1 is identical across formats", not "output equals
+  // the no-block call".
+  test("injected block is brand-stable — identical block 1 across format calls", () => {
+    const cfg = fixtureConfig();
+    const marketBlock = "# Competitive differentiation\nLean into humidity care.";
+    // Both calls model the two format generations of one topic: same config,
+    // same language, same extraContext. buildBrandContext takes no format arg —
+    // proving block 1 cannot vary by format.
+    const blockForFormatA = buildBrandContext(cfg, "en", [marketBlock]);
+    const blockForFormatB = buildBrandContext(cfg, "en", [marketBlock]);
+    expect(blockForFormatA).toBe(blockForFormatB);
+    expect(blockForFormatA).toContain(marketBlock);
+  });
 });
 
 describe("generatePost — auth & validation", () => {

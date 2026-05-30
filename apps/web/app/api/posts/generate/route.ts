@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { generatePost, adaptToLinkedIn, ClaudeError } from "@/lib/claude";
+import { differentiationContextBlocks } from "@/lib/market-brain/differentiation-context";
 import {
   checkText,
   deriveDetectionScore,
@@ -106,11 +107,34 @@ export async function POST(request: Request): Promise<Response> {
     resolvedCandidateText = candidate.topic_text;
   }
 
+  // Market Brain (T8): inject the brand's competitive differentiation into the
+  // generation prompt via the T4 seam. Read the single derived-only row (RLS
+  // owner read). On DB error: log and skip — never hide the breakage (a silent
+  // catch would make Market Brain look inactive), but never block generation
+  // over it either. Absent row / low-confidence (both arrays empty) → [] → skip.
+  const { data: diffRow, error: diffErr } = await supabase
+    .from("market_differentiation")
+    .select("common_themes, positioning_gaps")
+    .eq("brand_id", brand_id)
+    .maybeSingle();
+  if (diffErr) {
+    console.error("market_differentiation read failed:", diffErr.message);
+  }
+  const extraContext = differentiationContextBlocks(diffErr ? null : diffRow);
+
   let claude;
   try {
     claude = source_text
-      ? await adaptToLinkedIn(config, brand.primary_language, source_text)
-      : await generatePost(config, brand.primary_language, effectiveTopicHint);
+      ? await adaptToLinkedIn(config, brand.primary_language, source_text, {
+          extraContext,
+        })
+      : await generatePost(
+          config,
+          brand.primary_language,
+          effectiveTopicHint,
+          "linkedin_post",
+          { extraContext },
+        );
   } catch (err) {
     const msg = err instanceof ClaudeError ? err.message : "Generate failed";
     const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
