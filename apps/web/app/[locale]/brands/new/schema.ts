@@ -73,6 +73,63 @@ export const WordGuardsSchema = z.object({
   required_phrases: z.array(z.string().trim().min(1).max(80)).max(20),
 });
 
+// ── Client Brain (ADR-0022 moat) ──────────────────────────────────────
+// Structured business facts that ground generation. The T1 spike proved the
+// delta lives here (specificity / differentiation), not in voice.
+// Migration: 20260530120000_client_brain.sql. Defined + validated here as the
+// contract; wired into the wizard + settings in a later task (T9/C1).
+//
+// HARD RULE: forbidden_claims (LEGAL — statements the brand must never make,
+// e.g. "guaranteed results") is SEPARATE from forbidden_words above (anti-slop
+// stop-tokens). Different field, different DB column, different Quality Gate
+// axis (Risk vs Generic). Never merge the two.
+
+const ServiceSchema = z.object({
+  name: z.string().trim().min(1, "validation.required").max(120),
+  description: z.string().trim().max(500).optional(),
+});
+
+const PricingItemSchema = z.object({
+  label: z.string().trim().min(1, "validation.required").max(120),
+  detail: z.string().trim().max(300).optional(),
+});
+
+export const PROOF_KINDS = [
+  "certification",
+  "case_study",
+  "metric",
+  "testimonial",
+  "source_fact",
+] as const;
+
+// Per-body cap: proof_items are JOIN'd into every Fact-axis prompt, so an
+// unbounded body bloats every future generation. Enforced app-side (jsonb
+// column has no length constraint).
+export const MAX_PROOF_BODY = 2000;
+
+export const ProofItemSchema = z.object({
+  kind: z.enum(PROOF_KINDS),
+  body: z
+    .string()
+    .trim()
+    .min(1, "validation.required")
+    .max(MAX_PROOF_BODY, "validation.proofTooLong"),
+  source: z.string().trim().max(500).optional(),
+  asset_url: z.string().trim().max(1000).optional(),
+  verifiable: z.boolean().default(false),
+});
+
+export const ClientBrainSchema = z.object({
+  services: z.array(ServiceSchema).max(30),
+  locations: z.array(z.string().trim().min(1).max(120)).max(30),
+  pricing: z.array(PricingItemSchema).max(30),
+  forbidden_claims: z.array(z.string().trim().min(1).max(200)).max(30),
+  proof_items: z.array(ProofItemSchema).max(50),
+});
+
+export type ClientBrainData = z.infer<typeof ClientBrainSchema>;
+export type ProofItemInput = z.infer<typeof ProofItemSchema>;
+
 const QuoteSchema = z.object({
   quote: z.string().trim().min(1).max(400),
   source: z.string().trim().max(80).optional(),

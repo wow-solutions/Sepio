@@ -61,6 +61,10 @@ outputs/
 # Repositioning research dialogs (Claude/GPT/etc) — sensitive, kept local
 raw/repositioning/
 
+# Spike / scratch workspace — client expertise, gate verdicts, blind-eval posts
+# (category C: commercial/moat). Kept local, never committed.
+scratch/
+
 # Obsidian workspace state (но конфиги — оставляем)
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
