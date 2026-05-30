@@ -139,3 +139,24 @@ export async function recomputeMarketBrain(
   triggerMarketBrainForBrand(brandId);
   return { ok: true };
 }
+
+// Polled by the panel after a recompute to detect completion: when computed_at
+// changes from the baseline the page rendered with, the worker has written a
+// fresh row and the UI can auto-refresh. RLS scopes the read to owned brands.
+export async function getDifferentiationStatus(
+  brandId: string,
+): Promise<{ computedAt: string | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { computedAt: null };
+
+  const { data } = await supabase
+    .from("market_differentiation")
+    .select("computed_at")
+    .eq("brand_id", brandId)
+    .maybeSingle();
+
+  return { computedAt: data?.computed_at ?? null };
+}

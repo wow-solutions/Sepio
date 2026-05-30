@@ -132,8 +132,11 @@
       "enable": "Enable",
       "disable": "Disable",
       "recompute": "Recompute now",
+      "recomputeRunning": "Recomputing…",
       "recomputeHint": "Scrapes competitors and recomputes differentiation.",
-      "recomputeQueued": "Recomputing — refresh in a minute to see results.",
+      "recomputeStatus": "Scraping competitors and computing differentiation",
+      "recomputeDone": "Done — results below.",
+      "recomputeTimeout": "Taking longer than usual. Refresh the page in a minute to check.",
       "error": {
         "invalidUrl": "Enter a valid website (e.g. competitor.com).",
         "notSignedIn": "You're signed out. Refresh and try again.",

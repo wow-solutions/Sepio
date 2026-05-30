@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import {
   addCompetitor,
+  getDifferentiationStatus,
   recomputeMarketBrain,
   setCompetitorStatus,
   type CompetitorActionResult,
@@ -20,19 +21,57 @@ const KNOWN_ERRORS = [
   "noBetaAccess",
 ];
 
+// Recompute progress: poll computed_at every POLL_MS, give up after TIMEOUT_S.
+// EXPECTED_S drives the estimated bar (scrape ≤5 pages × N competitors + 1 LLM).
+const POLL_MS = 4000;
+const TIMEOUT_S = 240;
+const EXPECTED_S = 90;
+
+type RecomputePhase = "idle" | "running" | "done" | "timeout";
+
 export function CompetitorsPanel({
   brandId,
   competitors,
+  differentiationComputedAt,
 }: {
   brandId: string;
   competitors: Competitor[];
+  differentiationComputedAt: string | null;
 }) {
   const t = useTranslations("brandDetail.marketBrain");
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  const [phase, setPhase] = useState<RecomputePhase>("idle");
+  const [elapsed, setElapsed] = useState(0);
+  // computed_at the page rendered with — a change means the worker finished.
+  const baselineRef = useRef<string | null>(differentiationComputedAt);
+
+  // Poll + timer while a recompute is running.
+  useEffect(() => {
+    if (phase !== "running") return;
+
+    const timer = setInterval(() => setElapsed((e) => e + 1), 1000);
+
+    const poll = setInterval(async () => {
+      const { computedAt } = await getDifferentiationStatus(brandId);
+      if (computedAt && computedAt !== baselineRef.current) {
+        setPhase("done");
+        router.refresh();
+      }
+    }, POLL_MS);
+
+    // Give up after TIMEOUT_S — deferred (not a synchronous setState in the effect).
+    const timeout = setTimeout(() => setPhase("timeout"), TIMEOUT_S * 1000);
+
+    return () => {
+      clearInterval(timer);
+      clearInterval(poll);
+      clearTimeout(timeout);
+    };
+  }, [phase, brandId, router]);
 
   function resolveError(key: string): string {
     return KNOWN_ERRORS.includes(key) ? t(`error.${key}`) : key;
@@ -43,7 +82,6 @@ export function CompetitorsPanel({
     opts?: { onOk?: () => void; refresh?: boolean },
   ) {
     setError(null);
-    setNotice(null);
     startTransition(async () => {
       const res = await fn();
       if (!res.ok) {
@@ -55,7 +93,25 @@ export function CompetitorsPanel({
     });
   }
 
+  function startRecompute() {
+    setError(null);
+    baselineRef.current = differentiationComputedAt;
+    startTransition(async () => {
+      const res = await recomputeMarketBrain(brandId);
+      if (!res.ok) {
+        setError(resolveError(res.error));
+        return;
+      }
+      setElapsed(0);
+      setPhase("running");
+    });
+  }
+
   const approvedCount = competitors.filter((c) => c.status === "approved").length;
+  const running = phase === "running";
+  const busy = isPending || running;
+  const barPct =
+    phase === "done" ? 100 : Math.min(95, Math.round((elapsed / EXPECTED_S) * 100));
 
   return (
     <div
@@ -80,7 +136,7 @@ export function CompetitorsPanel({
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder={t("addPlaceholder")}
-          disabled={isPending}
+          disabled={busy}
           style={{
             flex: 1,
             height: 36,
@@ -92,7 +148,7 @@ export function CompetitorsPanel({
             fontSize: 13,
           }}
         />
-        <button type="submit" disabled={isPending || !url.trim()} style={primaryBtn(isPending)}>
+        <button type="submit" disabled={busy || !url.trim()} style={primaryBtn(busy)}>
           {t("addButton")}
         </button>
       </form>
@@ -147,7 +203,7 @@ export function CompetitorsPanel({
                 </a>
                 <button
                   type="button"
-                  disabled={isPending}
+                  disabled={busy}
                   onClick={() =>
                     run(() =>
                       setCompetitorStatus(c.id, brandId, disabled ? "approved" : "disabled"),
@@ -167,24 +223,55 @@ export function CompetitorsPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button
           type="button"
-          disabled={isPending || approvedCount === 0}
-          onClick={() =>
-            run(() => recomputeMarketBrain(brandId), {
-              refresh: false,
-              onOk: () => setNotice(t("recomputeQueued")),
-            })
-          }
-          style={secondaryBtn(isPending || approvedCount === 0)}
+          disabled={busy || approvedCount === 0}
+          onClick={startRecompute}
+          style={secondaryBtn(busy || approvedCount === 0)}
         >
-          {t("recompute")}
+          {running ? t("recomputeRunning") : t("recompute")}
         </button>
-        <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>{t("recomputeHint")}</span>
+        {!running && (
+          <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>{t("recomputeHint")}</span>
+        )}
       </div>
 
+      {/* Progress while running */}
+      {running && (
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              height: 6,
+              borderRadius: 9999,
+              background: "var(--border-subtle)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${barPct}%`,
+                background: "var(--sepio-sepia)",
+                borderRadius: 9999,
+                transition: "width 1s linear",
+              }}
+            />
+          </div>
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--ink-muted)" }}>
+            {t("recomputeStatus")} · {formatElapsed(elapsed)}
+          </p>
+        </div>
+      )}
+
+      {phase === "done" && <Note tone="ok">{t("recomputeDone")}</Note>}
+      {phase === "timeout" && <Note tone="error">{t("recomputeTimeout")}</Note>}
       {error && <Note tone="error">{error}</Note>}
-      {notice && <Note tone="ok">{notice}</Note>}
     </div>
   );
+}
+
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `${s}s`;
 }
 
 function Note({ tone, children }: { tone: "error" | "ok"; children: React.ReactNode }) {
