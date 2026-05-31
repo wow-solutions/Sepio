@@ -89,6 +89,10 @@ export function buildBrandContext(
     // in any language by the user).
     `Write in ${langName}, regardless of what language the topic hint is written in.`,
     "Output ONLY the content itself. No preamble, no surrounding quotes, no 'Here is...' framing.",
+    // Anti-tell: the model defaults to templated openers ("Most [people] I talk
+    // to…") which read as AI-written and make a feed of posts look identical.
+    // Forbid the class and demand a concrete, varied first line.
+    "Opening line — never start with a formulaic template such as \"Most [people] I talk to…\", \"In today's world…\", \"Let's be honest…\", \"Here's the thing…\", or \"We've all been there…\". These are AI tells. Open instead with something concrete: a specific moment, a number, a name, a blunt claim, or a sharp question. Vary the opening structure — never reuse the same hook pattern post to post.",
     // Format-specific rules (length, structure, behavioral signal) are injected
     // separately as the format directive block — not here.
   ];
