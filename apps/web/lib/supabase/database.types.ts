@@ -287,6 +287,60 @@ export type Database = {
           },
         ]
       }
+      brand_rules: {
+        Row: {
+          active: boolean
+          brand_id: string
+          created_at: string
+          human_label: string
+          id: string
+          rationale: string | null
+          rule_text: string
+          rule_type: string
+          scope: string
+          source_post_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          brand_id: string
+          created_at?: string
+          human_label: string
+          id?: string
+          rationale?: string | null
+          rule_text: string
+          rule_type: string
+          scope?: string
+          source_post_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          brand_id?: string
+          created_at?: string
+          human_label?: string
+          id?: string
+          rationale?: string | null
+          rule_text?: string
+          rule_type?: string
+          scope?: string
+          source_post_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_rules_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_rules_source_post_id_fkey"
+            columns: ["source_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       brands: {
         Row: {
           account_id: string

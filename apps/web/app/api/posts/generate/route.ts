@@ -4,6 +4,10 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { generatePost, adaptToLinkedIn, ClaudeError } from "@/lib/claude";
 import { differentiationContextBlocks } from "@/lib/market-brain/differentiation-context";
 import {
+  mergeRuleWords,
+  renderVoiceNoteBlocks,
+} from "@/lib/brand-rules/rules-context";
+import {
   checkText,
   deriveDetectionScore,
   PangramError,
@@ -120,16 +124,49 @@ export async function POST(request: Request): Promise<Response> {
   if (diffErr) {
     console.error("market_differentiation read failed:", diffErr.message);
   }
-  const extraContext = differentiationContextBlocks(diffErr ? null : diffRow);
+  // Editorial Memory (T6): inject the brand's learned rules via the same T4 seam.
+  // Read active rules once, sorted by (created_at, id) for byte-stable prompt
+  // assembly (cache invariant, Codex #4-7). DB error → log + skip (never block
+  // generation). Word-type rules (forbidden_word/required_phrase) MERGE into the
+  // config columns so buildBrandContext emits ONE deduped "Never use"/"Weave in"
+  // section (3b) — with no rules + clean config the merge is a no-op, so a brand
+  // not using the feature keeps an identical (cache-warm) prompt. voice_note rules
+  // have no column, so they inject as their own scope-grouped blocks.
+  const { data: ruleRows, error: rulesErr } = await supabase
+    .from("brand_rules")
+    .select("rule_type, scope, rule_text")
+    .eq("brand_id", brand_id)
+    .eq("active", true)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  if (rulesErr) {
+    console.error("brand_rules read failed:", rulesErr.message);
+  }
+  const rules = rulesErr ? [] : (ruleRows ?? []);
+  const mergedWords = mergeRuleWords(
+    rules,
+    config.forbidden_words ?? [],
+    config.required_phrases ?? [],
+  );
+  const configForGen = {
+    ...config,
+    forbidden_words: mergedWords.forbidden,
+    required_phrases: mergedWords.required,
+  };
+
+  const extraContext = [
+    ...differentiationContextBlocks(diffErr ? null : diffRow),
+    ...renderVoiceNoteBlocks(rules),
+  ];
 
   let claude;
   try {
     claude = source_text
-      ? await adaptToLinkedIn(config, brand.primary_language, source_text, {
+      ? await adaptToLinkedIn(configForGen, brand.primary_language, source_text, {
           extraContext,
         })
       : await generatePost(
-          config,
+          configForGen,
           brand.primary_language,
           effectiveTopicHint,
           "linkedin_post",
