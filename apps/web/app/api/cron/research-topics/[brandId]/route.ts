@@ -9,6 +9,13 @@ import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const maxDuration = 300; // 5 min, Vercel Pro
 
+// Bound the source fan-out BELOW maxDuration so a slow source (web_search has
+// been ~8 min) can't make the whole run get killed at 300s with nothing saved.
+// At the deadline, slow sources abort and the worker still inserts whatever the
+// fast sources (dataforseo, voc) produced. This is a background cron (fire-and-
+// forget from dispatch), so the wall-time only matters vs the function cap.
+const SOURCE_BUDGET_MS = 240_000; // 4 min, leaves ~60s for insert + overhead
+
 type ErrorBody = { error: string; brand_id?: string };
 
 function jsonError(body: ErrorBody, status: number): Response {
@@ -78,14 +85,18 @@ export async function POST(
   // For MVP we don't have per-brand timezone — use generic locale.
   let result;
   try {
-    result = await researchTopicsForBrand(supabase, {
-      brand_id: brand.id,
-      industry: brand.industry,
-      primary_language: brand.primary_language,
-      brand_voice: config.brand_voice,
-      seo_keywords_primary: config.seo_keywords_primary,
-      voc_pain_points: config.voc_pain_points,
-    });
+    result = await researchTopicsForBrand(
+      supabase,
+      {
+        brand_id: brand.id,
+        industry: brand.industry,
+        primary_language: brand.primary_language,
+        brand_voice: config.brand_voice,
+        seo_keywords_primary: config.seo_keywords_primary,
+        voc_pain_points: config.voc_pain_points,
+      },
+      { signal: AbortSignal.timeout(SOURCE_BUDGET_MS) },
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[cron] research failed for brand ${brandId}:`, err);
