@@ -45,7 +45,7 @@ export default async function PostDetailPage({ params }: PageProps) {
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("display_name, plan_tier, plan_status, trial_ends_at")
+    .select("display_name, plan_tier, plan_status, trial_ends_at, beta_access")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -133,9 +133,11 @@ export default async function PostDetailPage({ params }: PageProps) {
 
         <PostEditor
           postId={post.id}
+          brandId={post.brand_id}
           initialContent={post.content_text ?? ""}
           status={post.status}
           externalUrl={post.external_post_url}
+          betaAccess={account?.beta_access === true}
         />
       </section>
     </AppShell>

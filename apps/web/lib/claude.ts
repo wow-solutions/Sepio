@@ -198,6 +198,55 @@ export async function adaptToLinkedIn(
   return callClaude(config, primaryLanguage, userText, "linkedin_post", opts);
 }
 
+// Editorial Memory (T3): rewrite an existing post per a natural-language
+// instruction. This is the rewrite HALF of the refine flow — a SEPARATE call
+// from the rule extractor (design D1), run concurrently by the refine route
+// (T5). It honors the brand's active rules the same way generation does: the
+// caller passes the merged word columns via `config` and the voice_note blocks
+// via `opts.extraContext`, so buildBrandContext folds them into the cached
+// system prompt and the rewrite never reintroduces a banned word or opener.
+export async function refineRewrite(
+  config: BrandConfigRow,
+  primaryLanguage: string,
+  originalPost: string,
+  instruction: string,
+  opts?: GenerateOptions,
+): Promise<GenerateResult> {
+  const post = originalPost.trim();
+  const instr = instruction.trim();
+  if (!post) throw new ClaudeError("post text is empty");
+  if (!instr) throw new ClaudeError("instruction is empty");
+  return callClaude(
+    config,
+    primaryLanguage,
+    buildRefineUserText(post, instr),
+    "linkedin_post",
+    opts,
+  );
+}
+
+// Pure: assemble the user message for a refine rewrite. Exported for unit tests.
+// Instruction before post, output-only directive, and an explicit reminder to
+// honor the system-prompt rules (the rewrite must not undo accumulated memory).
+export function buildRefineUserText(
+  originalPost: string,
+  instruction: string,
+): string {
+  return [
+    "Below is an existing post and an instruction for how to change it.",
+    "Rewrite the post applying the instruction. Change only what the instruction asks —",
+    "keep everything else intact. Stay in the brand voice and honor EVERY rule in the",
+    "system prompt: never reintroduce a forbidden word or a banned opening pattern.",
+    "Output ONLY the rewritten post — no preamble, no surrounding quotes.",
+    "",
+    "INSTRUCTION:",
+    instruction.trim(),
+    "",
+    "CURRENT POST:",
+    originalPost.trim(),
+  ].join("\n");
+}
+
 async function callClaude(
   config: BrandConfigRow,
   primaryLanguage: string,

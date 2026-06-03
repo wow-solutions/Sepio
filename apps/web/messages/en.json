@@ -145,6 +145,27 @@
         "noBetaAccess": "Market Brain isn't enabled for this account yet.",
         "network": "Network error. Try again."
       }
+    },
+    "editorialMemory": {
+      "header": "Editorial Memory",
+      "subtitle": "Rules Sepio learned from your edits. Injected into every future post for this brand.",
+      "empty": "No rules learned yet. Edit a post with an instruction and tick “Remember this rule”.",
+      "enable": "Enable",
+      "disable": "Disable",
+      "delete": "Delete",
+      "deleteConfirm": "Delete this rule? Future posts will stop following it.",
+      "offTag": "off",
+      "sourceDeleted": "source post deleted",
+      "ruleType": {
+        "voice_note": "Voice rule",
+        "forbidden_word": "Never use",
+        "required_phrase": "Always include"
+      },
+      "scopeOpt": {
+        "opening": "Opening",
+        "body": "Body",
+        "global": "Whole post"
+      }
     }
   },
   "brandSettings": {
@@ -388,6 +409,61 @@
         "draft": "Draft",
         "pending_approval": "Pending",
         "published": "Published"
+      },
+      "editorial": {
+        "heading": "Teach Sepio",
+        "placeholder": "Tell Sepio what to change…",
+        "rewrite": "Rewrite + review",
+        "rewriting": "Rewriting…",
+        "loadingLabel": "Sepio is rewriting and drafting a rule…",
+        "loadingHint": "usually ~8s",
+        "current": "Current",
+        "rewritten": "Rewritten",
+        "proposedRule": "Proposed brand rule",
+        "remember": "Remember this rule for the brand",
+        "rememberSub": "Applies to all future posts · saves a permanent brand rule",
+        "apply": "Apply",
+        "applying": "Applying…",
+        "saveRule": "Save rule",
+        "confirmOffPre": "“Apply” will update ",
+        "confirmOffOut": "only this post.",
+        "confirmOnPre": "“Apply” will update this post and ",
+        "confirmOnOut": "save a permanent brand rule.",
+        "riskTag": "RISK",
+        "riskBroad": "May be too broad — review before saving.",
+        "noRewrite": "No rewrite needed.",
+        "extractFailed": "Couldn’t draft a rule this time.",
+        "oneOff": "Nothing to teach the brand here — a one-off fix.",
+        "nothing": "Sepio didn’t find anything to change.",
+        "applied": "Applied.",
+        "ruleSaved": "Rule saved.",
+        "ruleSavedPostNot": "Rule saved, but the post wasn’t updated — refresh and retry.",
+        "factTitle": "This looks like a fact about your business",
+        "factCta": "Add it in Client Brain →",
+        "factDismiss": "Dismiss",
+        "field": {
+          "label": "Label",
+          "text": "Rule",
+          "type": "Type",
+          "scope": "Scope"
+        },
+        "ruleType": {
+          "voice_note": "Voice rule",
+          "forbidden_word": "Never use",
+          "required_phrase": "Always include"
+        },
+        "scopeOpt": {
+          "opening": "Opening",
+          "body": "Body",
+          "global": "Whole post"
+        },
+        "error": {
+          "noBetaAccess": "Editorial Memory is in beta — not enabled for this account yet.",
+          "network": "Network error — try again.",
+          "extract": "Couldn’t read that — try rephrasing the instruction.",
+          "published": "This post is published — refresh and start over.",
+          "generic": "Something went wrong — try again."
+        }
       }
     },
     "brandAll": "All brands"

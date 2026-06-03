@@ -9,6 +9,7 @@ import { brandColor } from "@/lib/brand-color";
 import { DifferentiationSchema } from "@/lib/market-brain/derived-only";
 import { disconnectLinkedIn } from "./actions";
 import { CompetitorsPanel } from "./competitors-panel";
+import { RulesPanel, type BrandRuleRow } from "./rules-panel";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -66,6 +67,16 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
         await supabase
           .from("market_competitors")
           .select("id, url, domain, status")
+          .eq("brand_id", brandId)
+          .order("created_at", { ascending: true })
+      ).data ?? []
+    : [];
+
+  const brandRules: BrandRuleRow[] = betaAccess
+    ? (
+        await supabase
+          .from("brand_rules")
+          .select("id, rule_type, scope, rule_text, human_label, active, source_post_id")
           .eq("brand_id", brandId)
           .order("created_at", { ascending: true })
       ).data ?? []
@@ -315,6 +326,27 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
                 prevalence: t("marketBrain.prevalenceLabel"),
               }}
             />
+          </>
+        )}
+
+        {/* Editorial Memory (gated by beta_access) */}
+        {betaAccess && (
+          <>
+            <h2
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                color: "var(--ink)",
+                margin: "40px 0 4px",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {t("editorialMemory.header")}
+            </h2>
+            <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: "0 0 16px" }}>
+              {t("editorialMemory.subtitle")}
+            </p>
+            <RulesPanel brandId={brand.id} rules={brandRules} />
           </>
         )}
 

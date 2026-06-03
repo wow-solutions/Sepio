@@ -1,4 +1,4 @@
-// GET /api/brands/[id]/topics — return top-5 unused candidates для /writer UI.
+// GET /api/brands/[brandId]/topics — return top-5 unused candidates для /writer UI.
 //
 // Auth: standard Supabase session. RLS на topic_candidates ограничивает чтение
 // своими брендами (через brand_id → brands.account_id).
@@ -36,9 +36,9 @@ function jsonError(body: ErrorBody, status: number): Response {
 
 export async function GET(
   _request: Request,
-  ctx: { params: Promise<{ id: string }> },
+  ctx: { params: Promise<{ brandId: string }> },
 ): Promise<Response> {
-  const { id: brandId } = await ctx.params;
+  const { brandId } = await ctx.params;
   if (!UUID_RE.test(brandId)) {
     return jsonError({ error: "Invalid brand_id" }, 400);
   }

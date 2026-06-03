@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { PublishButton } from "./publish-button";
+import { EditorialPanel } from "./editorial-panel";
 import { deletePost, updatePostContent } from "./actions";
 
 type FontChoice = "sans" | "serif" | "mono";
@@ -18,16 +19,20 @@ const FONT_VAR: Record<FontChoice, string> = {
 
 type Props = {
   postId: string;
+  brandId: string;
   initialContent: string;
   status: string;
   externalUrl: string | null;
+  betaAccess: boolean;
 };
 
 export function PostEditor({
   postId,
+  brandId,
   initialContent,
   status,
   externalUrl,
+  betaAccess,
 }: Props) {
   const t = useTranslations("posts.detail");
   const router = useRouter();
@@ -227,6 +232,14 @@ export function PostEditor({
           </>
         )}
       </div>
+
+      {betaAccess && canMutate && !isEditing && (
+        <EditorialPanel
+          postId={postId}
+          brandId={brandId}
+          currentContent={initialContent}
+        />
+      )}
     </>
   );
 }
