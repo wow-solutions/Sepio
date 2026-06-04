@@ -3,6 +3,7 @@ import { Fraunces, Onest, Geist_Mono } from "next/font/google";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider, hasLocale } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
+import { Analytics } from "@vercel/analytics/next";
 import { routing } from "@/i18n/routing";
 import "../globals.css";
 
@@ -58,6 +59,7 @@ export default async function LocaleLayout({
     >
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        <Analytics />
       </body>
     </html>
   );
