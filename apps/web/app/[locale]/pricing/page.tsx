@@ -1,12 +1,32 @@
 import type { Metadata } from "next";
 import { Link } from "@/i18n/navigation";
+import type { Locale } from "@/i18n/routing";
+import { alternatesFor, localizedUrl } from "@/lib/seo";
 import { LegalShell } from "../privacy/shell";
 
-export const metadata: Metadata = {
-  title: "Pricing — Sepio",
-  description:
-    "Content automation for solo consultants and boutique agencies. Plans from $49 to $399.",
-};
+const TITLE = "Pricing — Sepio | AI Content Engine for Agencies";
+const DESCRIPTION =
+  "See Sepio plans for agencies: GEO-ready, multi-platform content in your clients' voice. Monthly, cancel anytime. Start free, no credit card.";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const l = ((await params).locale as Locale) ?? "en";
+  return {
+    title: TITLE,
+    description: DESCRIPTION,
+    alternates: alternatesFor(l, "pricing"),
+    openGraph: {
+      title: TITLE,
+      description: DESCRIPTION,
+      url: localizedUrl(l, "pricing"),
+      siteName: "Sepio",
+      type: "website",
+    },
+  };
+}
 
 type Plan = {
   name: string;

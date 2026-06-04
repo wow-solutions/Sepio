@@ -1,15 +1,43 @@
 import { redirect } from "next/navigation";
-import type { Route } from "next";
+import type { Metadata, Route } from "next";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { LandingLangToggle } from "@/components/shell/landing-lang-toggle";
 import type { Locale } from "@/i18n/routing";
+import { alternatesFor, localizedUrl } from "@/lib/seo";
 import { landingCopy } from "./landing-copy";
+import { StructuredData } from "./_components/structured-data";
 import "./landing.css";
 
 // Markup + styles ported from design_handoff_sepio_brand v1 (Sepio Landing.html).
 // Copy comes from landing-copy.tsx (en/es/ru); brand names, prices, icons, times
 // and sample data stay inline because they are not translated.
+
+const TITLE =
+  "Sepio — Expert Content Engine for Agencies | GEO + AI Citations";
+const DESCRIPTION =
+  "Sepio turns client expertise into multi-platform content built for GEO — the kind AI assistants cite. For agencies. Start free, no card.";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const l = (locale as Locale) ?? "en";
+  return {
+    title: TITLE,
+    description: DESCRIPTION,
+    alternates: alternatesFor(l, ""),
+    openGraph: {
+      title: TITLE,
+      description: DESCRIPTION,
+      url: localizedUrl(l, ""),
+      siteName: "Sepio",
+      type: "website",
+    },
+  };
+}
 
 export default async function HomePage({
   params,
@@ -68,6 +96,7 @@ export default async function HomePage({
 
   return (
     <div className="lp">
+      <StructuredData />
       {/* NAV */}
       <header className="nav">
         <div className="nav-inner">

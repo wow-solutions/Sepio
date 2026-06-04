@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import {
   AuthSplit,
@@ -9,6 +10,11 @@ import {
   Em,
 } from "@/components/shell/auth-split";
 import { updatePassword } from "./actions";
+
+// Auth surface: keep out of the index but let link equity flow.
+export const metadata: Metadata = {
+  robots: { index: false, follow: true },
+};
 
 type PageProps = {
   searchParams: Promise<{ error?: string }>;
