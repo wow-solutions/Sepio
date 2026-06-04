@@ -327,76 +327,100 @@
   *::-webkit-scrollbar-track { background: transparent; }
 }
 
-/* Legal pages prose (privacy / terms / data deletion) */
-.legal-prose h1 {
+/* Legal pages prose (privacy / terms / data deletion); shared with .prose (blog) */
+.legal-prose h1,
+.prose h1 {
   font-size: 28px;
   font-weight: 600;
   margin: 0 0 24px;
   letter-spacing: -0.01em;
 }
-.legal-prose h2 {
+.legal-prose h2,
+.prose h2 {
   font-size: 20px;
   font-weight: 600;
   margin: 40px 0 12px;
   letter-spacing: -0.005em;
 }
-.legal-prose h3 {
+.legal-prose h3,
+.prose h3 {
   font-size: 16px;
   font-weight: 600;
   margin: 28px 0 8px;
 }
-.legal-prose p {
+.legal-prose p,
+.prose p {
   margin: 0 0 16px;
 }
 .legal-prose ul,
-.legal-prose ol {
+.legal-prose ol,
+.prose ul,
+.prose ol {
   margin: 0 0 16px;
   padding-left: 24px;
 }
-.legal-prose li {
+.legal-prose li,
+.prose li {
   margin: 4px 0;
 }
-.legal-prose a {
+.legal-prose a,
+.prose a {
   color: var(--ink);
   text-decoration: underline;
   text-decoration-color: var(--border-strong);
   text-underline-offset: 3px;
 }
-.legal-prose a:hover {
+.legal-prose a:hover,
+.prose a:hover {
   text-decoration-color: var(--ink);
 }
-.legal-prose strong {
+.legal-prose strong,
+.prose strong {
   font-weight: 600;
   color: var(--ink);
 }
-.legal-prose hr {
+.legal-prose hr,
+.prose hr {
   border: 0;
   border-top: 1px solid var(--border-subtle);
   margin: 32px 0;
 }
-.legal-prose table {
+.legal-prose table,
+.prose table {
   width: 100%;
   border-collapse: collapse;
   margin: 16px 0;
   font-size: 14px;
 }
 .legal-prose th,
-.legal-prose td {
+.legal-prose td,
+.prose th,
+.prose td {
   border: 1px solid var(--border-subtle);
   padding: 8px 12px;
   text-align: left;
   vertical-align: top;
 }
-.legal-prose th {
+.legal-prose th,
+.prose th {
   background: var(--surface-subtle, transparent);
   font-weight: 600;
 }
-.legal-prose code {
+.legal-prose code,
+.prose code {
   font-family: var(--font-mono);
   font-size: 13px;
   background: var(--surface-subtle, rgba(0,0,0,0.05));
   padding: 1px 5px;
   border-radius: 3px;
+}
+/* Blog-only: images (legal pages have none) */
+.prose img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 24px auto;
+  border-radius: 8px;
 }
 
 /* =========================================================================

@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { localizedUrl, hreflangAlternates } from "@/lib/seo";
+import { createClient } from "@/lib/supabase/server";
 
 // Public, index-worthy pages only. Auth/authed/api routes are excluded here and
 // disallowed in robots.ts. URLs follow localePrefix: "as-needed" (en unprefixed).
@@ -10,13 +12,48 @@ const PAGES: { path: string; changeFrequency: MetadataRoute.Sitemap[number]["cha
   { path: "terms", changeFrequency: "monthly", priority: 0.3 },
 ];
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const lastModified = new Date();
-  return PAGES.map(({ path, changeFrequency, priority }) => ({
-    url: localizedUrl("en", path),
+  const staticEntries: MetadataRoute.Sitemap = PAGES.map(
+    ({ path, changeFrequency, priority }) => ({
+      url: localizedUrl("en", path),
+      lastModified,
+      changeFrequency,
+      priority,
+      alternates: hreflangAlternates(path),
+    }),
+  );
+
+  // Blog index + published posts (en-only -> no hreflang alternates).
+  // Cast to untyped client: blog_posts isn't in database.types.ts yet.
+  const supabase = (await createClient()) as unknown as SupabaseClient;
+  const { data } = await supabase
+    .from("blog_posts")
+    .select("slug, published_at, material_updated_at")
+    .eq("status", "published")
+    .eq("locale", "en")
+    .order("published_at", { ascending: false })
+    .returns<
+      {
+        slug: string;
+        published_at: string | null;
+        material_updated_at: string | null;
+      }[]
+    >();
+
+  const blogIndexEntry: MetadataRoute.Sitemap[number] = {
+    url: localizedUrl("en", "blog"),
     lastModified,
-    changeFrequency,
-    priority,
-    alternates: hreflangAlternates(path),
+    changeFrequency: "weekly",
+    priority: 0.6,
+  };
+
+  const postEntries: MetadataRoute.Sitemap = (data ?? []).map((p) => ({
+    url: localizedUrl("en", `blog/${p.slug}`),
+    lastModified: p.material_updated_at ?? p.published_at ?? lastModified,
+    changeFrequency: "monthly",
+    priority: 0.7,
   }));
+
+  return [...staticEntries, blogIndexEntry, ...postEntries];
 }
