@@ -198,6 +198,24 @@ export async function adaptToLinkedIn(
   return callClaude(config, primaryLanguage, userText, "linkedin_post", opts);
 }
 
+// Angle-of-approach (moat): generate a post from a fully-assembled user message.
+// The caller (generate route) builds the angle template via buildAngleUserText
+// in lib/_private/angles.ts — that's where the topic/instruction/citation live.
+// This wrapper only hands that text to callClaude with the brand-stable system
+// prompt + linkedin_post format, mirroring generatePost/adaptToLinkedIn.
+export async function generatePostFromUserMessage(
+  config: BrandConfigRow,
+  primaryLanguage: string,
+  userText: string,
+  opts?: GenerateOptions,
+): Promise<GenerateResult> {
+  const trimmed = userText.trim();
+  if (!trimmed) {
+    throw new ClaudeError("user message is empty");
+  }
+  return callClaude(config, primaryLanguage, trimmed, "linkedin_post", opts);
+}
+
 // Editorial Memory (T3): rewrite an existing post per a natural-language
 // instruction. This is the rewrite HALF of the refine flow — a SEPARATE call
 // from the rule extractor (design D1), run concurrently by the refine route

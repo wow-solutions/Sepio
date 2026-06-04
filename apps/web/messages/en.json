@@ -278,7 +278,7 @@
     "prompt": "Prompt",
     "modeTopic": "From topic",
     "modeArticle": "From article",
-    "topicPlaceholder": "Topic hint for {brand} — or leave blank.",
+    "topicPlaceholder": "What should {brand} write about?",
     "articlePlaceholder": "Paste the full article (blog post, newsletter, long email…) and we'll adapt one idea into a LinkedIn post.",
     "articleTooShort": "Article is too short to adapt — at least 50 characters.",
     "channel": "Channel",
@@ -330,8 +330,47 @@
       "sourceDataforSeo": "Trends",
       "sourceVoc": "From your data",
       "selected": "Selected",
-      "errorFallback": "Couldn't load topics. Refresh to retry."
+      "errorFallback": "Couldn't load topics. Refresh to retry.",
+      "viewSource": "Source ↗",
+      "viewSourceAria": "Open the source for: {topic}",
+      "sourceReady": "✓ source"
     },
+    "angle": {
+      "title": "Angle",
+      "helper": "Optional — choose how to approach the topic. Leave unselected for a straight take.",
+      "pick": "Angle ▾",
+      "none": "No angle",
+      "sourceChecking": "Checking source…",
+      "sourceGrounded": "Grounded in source:",
+      "sourceUnavailable": "Source couldn't be fetched — writing from the topic gist.",
+      "sourceTopicOnly": "Writing from the topic, no source needed.",
+      "commentNotePlaceholder": "What's your take? A sentence or two we'll turn into your stance.",
+      "commentNoteRequired": "Add a note for the comment angle — what's your take?",
+      "commentSentimentLike": "Like it",
+      "commentSentimentDislike": "Dislike it",
+      "retell": {
+        "label": "Retell",
+        "desc": "Retell the source in your brand's own words, news-blog style."
+      },
+      "comment": {
+        "label": "Comment",
+        "desc": "Summarize the news with a source citation, then give your take."
+      },
+      "apply": {
+        "label": "Apply",
+        "desc": "Apply the trend to this client's business — no source needed."
+      },
+      "contrarian": {
+        "label": "Contrarian",
+        "desc": "State what most conclude, then a sharper alternative view."
+      },
+      "lesson": {
+        "label": "Lesson",
+        "desc": "Pull the practical takeaway plus one concrete action."
+      }
+    },
+    "groundedFrom": "Grounded in {domain}",
+    "groundedTopicOnly": "From the topic",
     "emptyEyebrow": "New post",
     "emptyTitle": "Start with <em>one idea.</em>",
     "emptyBody": "Give Sepio a topic or paste an article in the panel on the left. It drafts the post in your brand voice — you edit, then publish.",

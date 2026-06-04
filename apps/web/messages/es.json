@@ -6,5 +6,48 @@
       "es": "Español",
       "ru": "Русский"
     }
+  },
+  "writer": {
+    "topicPicker": {
+      "viewSource": "Fuente ↗",
+      "viewSourceAria": "Abrir la fuente de: {topic}",
+      "sourceReady": "✓ fuente"
+    },
+    "angle": {
+      "title": "Enfoque",
+      "helper": "Opcional — elige cómo abordar el tema. Déjalo sin marcar para un texto directo.",
+      "pick": "Ángulo ▾",
+      "none": "Sin ángulo",
+      "sourceChecking": "Comprobando la fuente…",
+      "sourceGrounded": "Basado en la fuente:",
+      "sourceUnavailable": "No se pudo cargar la fuente — escribimos según el tema.",
+      "sourceTopicOnly": "Escribimos según el tema, sin fuente.",
+      "commentNotePlaceholder": "¿Qué opinas? Una o dos frases que convertiremos en tu postura.",
+      "commentNoteRequired": "Añade una nota para el enfoque de comentario — ¿qué opinas?",
+      "commentSentimentLike": "Me gusta",
+      "commentSentimentDislike": "No me gusta",
+      "retell": {
+        "label": "Recontar",
+        "desc": "Recuenta la fuente con la voz de tu marca, estilo blog de noticias."
+      },
+      "comment": {
+        "label": "Comentar",
+        "desc": "Resume la noticia citando la fuente y luego da tu opinión."
+      },
+      "apply": {
+        "label": "Aplicar",
+        "desc": "Aplica la tendencia al negocio del cliente — sin fuente."
+      },
+      "contrarian": {
+        "label": "Contracorriente",
+        "desc": "Di a qué concluye la mayoría y luego una visión alternativa más aguda."
+      },
+      "lesson": {
+        "label": "Lección",
+        "desc": "Extrae la lección práctica más una acción concreta."
+      }
+    },
+    "groundedFrom": "Basado en {domain}",
+    "groundedTopicOnly": "Del tema"
   }
 }

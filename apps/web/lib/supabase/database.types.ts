@@ -1017,6 +1017,8 @@ export type Database = {
       }
       topic_candidates: {
         Row: {
+          article_extract: Json | null
+          article_extract_status: string | null
           brand_id: string
           created_at: string
           degraded_run: boolean
@@ -1033,6 +1035,8 @@ export type Database = {
           used_at: string | null
         }
         Insert: {
+          article_extract?: Json | null
+          article_extract_status?: string | null
           brand_id: string
           created_at?: string
           degraded_run?: boolean
@@ -1049,6 +1053,8 @@ export type Database = {
           used_at?: string | null
         }
         Update: {
+          article_extract?: Json | null
+          article_extract_status?: string | null
           brand_id?: string
           created_at?: string
           degraded_run?: boolean
@@ -1086,6 +1092,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cache_topic_article: {
+        Args: { p_candidate_id: string; p_extract: Json; p_status: string }
+        Returns: undefined
+      }
       filter_unused_topic_texts: {
         Args: {
           p_brand_id: string

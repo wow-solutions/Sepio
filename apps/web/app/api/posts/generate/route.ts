@@ -1,7 +1,20 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
-import { generatePost, adaptToLinkedIn, ClaudeError } from "@/lib/claude";
+import {
+  generatePost,
+  adaptToLinkedIn,
+  generatePostFromUserMessage,
+  ClaudeError,
+} from "@/lib/claude";
+import { ANGLE_IDS, ANGLES_USING_ARTICLE } from "@/lib/angles-shared";
+import type { Json } from "@/lib/supabase/database.types";
+import { buildAngleUserText } from "@/lib/_private/angles";
+import {
+  fetchArticleExtract,
+  deriveSourceUrl,
+  type ArticleExtract,
+} from "@/lib/_private/article-fetch";
 import { differentiationContextBlocks } from "@/lib/market-brain/differentiation-context";
 import {
   mergeRuleWords,
@@ -37,6 +50,17 @@ const RequestSchema = z.object({
   topic_hint: z.string().max(500).optional(),
   source_text: z.string().min(50).max(30_000).optional(),
   topic_candidate_id: z.string().uuid().optional(),
+  // Angle-of-approach (TOPIC mode only). When present, the route builds an
+  // angle-specific user message instead of the default generatePost path.
+  angle: z.enum(ANGLE_IDS).optional(),
+  // Only meaningful for angle==="comment". Validated against the angle below
+  // (Zod can't express the cross-field rule cleanly, so it's checked manually).
+  stance: z
+    .object({
+      sentiment: z.enum(["like", "dislike"]),
+      note: z.string().max(500),
+    })
+    .optional(),
 });
 
 type ErrorBody = { error: string; stage?: "generate" | "detection" | "save" };
@@ -44,6 +68,11 @@ type ErrorBody = { error: string; stage?: "generate" | "detection" | "save" };
 function jsonError(body: ErrorBody, status: number): Response {
   return Response.json(body, { status });
 }
+
+// Cached extract shape stored in topic_candidates.article_extract (= ArticleExtract
+// plus an ISO fetchedAt). Reading back: cast to this, pass the ArticleExtract
+// subset (drop fetchedAt) into the angle builder.
+type CachedArticleExtract = ArticleExtract & { fetchedAt: string };
 
 export async function POST(request: Request): Promise<Response> {
   const supabase = await createClient();
@@ -60,13 +89,27 @@ export async function POST(request: Request): Promise<Response> {
       400,
     );
   }
-  const { brand_id, topic_hint, source_text, topic_candidate_id } =
+  const { brand_id, topic_hint, source_text, topic_candidate_id, angle, stance } =
     parsed.data;
+
+  // Angle/stance cross-field validation (frozen contract). Done before any DB
+  // work or Claude call so a malformed request fails fast with 400.
+  if (angle === "comment") {
+    const note = stance?.note.trim();
+    if (!stance || !note) {
+      return jsonError({ error: "stance.note is required for the comment angle" }, 400);
+    }
+    if (note.length > 500) {
+      return jsonError({ error: "stance.note must be 500 characters or fewer" }, 400);
+    }
+  }
+  // For non-comment angles, any provided stance is ignored (dropped below).
+  const effectiveStance = angle === "comment" ? stance! : null;
 
   // Fetch brand + config (RLS prevents reading another user's brand).
   const { data: brand } = await supabase
     .from("brands")
-    .select("id, account_id, primary_language")
+    .select("id, account_id, primary_language, name")
     .eq("id", brand_id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -85,10 +128,17 @@ export async function POST(request: Request): Promise<Response> {
   // for Claude). RLS verifies user owns this brand's candidates.
   let effectiveTopicHint = topic_hint;
   let resolvedCandidateText: string | null = null;
+  // Source URL for the angle article fetch — only a web_search candidate with a
+  // valid http(s) source_url qualifies. Free-text topic_hint has none.
+  let sourceUrl: string | null = null;
+  // Cached article extract for the picked candidate, when present and successful.
+  let cachedArticle: ArticleExtract | null = null;
   if (topic_candidate_id) {
     const { data: candidate, error: candidateErr } = await supabase
       .from("topic_candidates")
-      .select("id, brand_id, topic_text")
+      .select(
+        "id, brand_id, topic_text, source, source_metadata, article_extract, article_extract_status",
+      )
       .eq("id", topic_candidate_id)
       .maybeSingle();
 
@@ -109,6 +159,21 @@ export async function POST(request: Request): Promise<Response> {
     }
     effectiveTopicHint = candidate.topic_text;
     resolvedCandidateText = candidate.topic_text;
+    sourceUrl = deriveSourceUrl(candidate.source, candidate.source_metadata);
+    if (
+      candidate.article_extract_status === "success" &&
+      candidate.article_extract
+    ) {
+      // Drop the cache-only `fetchedAt` — the angle builder wants a bare
+      // ArticleExtract. Pick the fields explicitly (cleaner than an unused rest).
+      const c = candidate.article_extract as unknown as CachedArticleExtract;
+      cachedArticle = {
+        title: c.title,
+        excerpt: c.excerpt,
+        paragraphs: c.paragraphs,
+        sourceUrl: c.sourceUrl,
+      };
+    }
   }
 
   // Market Brain (T8): inject the brand's competitive differentiation into the
@@ -159,19 +224,88 @@ export async function POST(request: Request): Promise<Response> {
     ...renderVoiceNoteBlocks(rules),
   ];
 
+  // Resolved article for the active angle (null = topic-gist framing). Used both
+  // for the prompt and for the grounded/source response fields. Order:
+  //   1. cached success extract (no fetch);
+  //   2. else live fetch for article-using angles with a URL — best-effort cache
+  //      the result (success or failed) so the next pick is instant;
+  //   3. else null (apply, or no URL).
+  let resolvedArticle: ArticleExtract | null = null;
+  if (angle) {
+    if (cachedArticle) {
+      resolvedArticle = cachedArticle;
+    } else if (ANGLES_USING_ARTICLE.has(angle) && sourceUrl) {
+      const fetched = await fetchArticleExtract(sourceUrl);
+      if (fetched.ok) {
+        resolvedArticle = fetched.extract;
+        if (topic_candidate_id) {
+          const cached: CachedArticleExtract = {
+            ...fetched.extract,
+            fetchedAt: new Date().toISOString(),
+          };
+          const { error: cacheErr } = await supabase.rpc(
+            "cache_topic_article",
+            {
+              p_candidate_id: topic_candidate_id,
+              p_extract: cached as unknown as Json,
+              p_status: "success",
+            },
+          );
+          if (cacheErr) {
+            console.error(
+              "[generate] cache_topic_article (success) failed:",
+              cacheErr.message,
+            );
+          }
+        }
+      } else if (topic_candidate_id) {
+        const { error: cacheErr } = await supabase.rpc("cache_topic_article", {
+          p_candidate_id: topic_candidate_id,
+          p_extract: {} as unknown as Json,
+          p_status: "failed",
+        });
+        if (cacheErr) {
+          console.error(
+            "[generate] cache_topic_article (failed) failed:",
+            cacheErr.message,
+          );
+        }
+      }
+    }
+  }
+
   let claude;
   try {
-    claude = source_text
-      ? await adaptToLinkedIn(configForGen, brand.primary_language, source_text, {
-          extraContext,
-        })
-      : await generatePost(
-          configForGen,
-          brand.primary_language,
-          effectiveTopicHint,
-          "linkedin_post",
-          { extraContext },
-        );
+    if (angle) {
+      const userText = buildAngleUserText(angle, {
+        topicText: effectiveTopicHint ?? "",
+        sourceUrl,
+        article: resolvedArticle,
+        stance: effectiveStance,
+        brandName: brand.name,
+      });
+      claude = await generatePostFromUserMessage(
+        configForGen,
+        brand.primary_language,
+        userText,
+        { extraContext },
+      );
+    } else {
+      claude = source_text
+        ? await adaptToLinkedIn(
+            configForGen,
+            brand.primary_language,
+            source_text,
+            { extraContext },
+          )
+        : await generatePost(
+            configForGen,
+            brand.primary_language,
+            effectiveTopicHint,
+            "linkedin_post",
+            { extraContext },
+          );
+    }
   } catch (err) {
     const msg = err instanceof ClaudeError ? err.message : "Generate failed";
     const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
@@ -286,6 +420,11 @@ export async function POST(request: Request): Promise<Response> {
     console.error("service-role unavailable, skipping dataset write:", msg);
   }
 
+  // Grounding honesty: `grounded` = the draft was written against a real source
+  // article (cached or freshly fetched), not just the topic gist. `source`
+  // carries the URL + title when a source URL exists (even if the fetch failed,
+  // the URL is still meaningful for the "topic only" framing). Non-angle path is
+  // always grounded:false / source:null so the client type stays stable.
   return Response.json({
     post_id: postId,
     content: claude.text,
@@ -293,5 +432,9 @@ export async function POST(request: Request): Promise<Response> {
     detection_breakdown: pangram,
     status: initialStatus,
     cache_read_tokens: claude.usage.cache_read_input_tokens,
+    grounded: resolvedArticle !== null,
+    source: sourceUrl
+      ? { url: sourceUrl, title: resolvedArticle?.title ?? null }
+      : null,
   });
 }

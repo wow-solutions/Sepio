@@ -21,6 +21,8 @@ type TopicResponseRow = {
   source_metadata: unknown;
   score: number | null;
   created_at: string;
+  // 'success' | 'failed' | null — lets the picker badge already-hydrated topics.
+  article_extract_status: string | null;
 };
 
 type TopicsResponse = {
@@ -53,7 +55,9 @@ export async function GET(
   // Take a generous pool (up to 20) — scorer will pick top-5 with quota.
   const { data: pool, error } = await supabase
     .from("topic_candidates")
-    .select("id, topic_text, source, source_metadata, score, created_at")
+    .select(
+      "id, topic_text, source, source_metadata, score, created_at, article_extract_status",
+    )
     .eq("brand_id", brandId)
     .is("used_at", null)
     .gt("expires_at", new Date().toISOString())
@@ -95,6 +99,7 @@ export async function GET(
       source_metadata: t.source_metadata,
       score: t.score,
       created_at: t.created_at,
+      article_extract_status: t.article_extract_status,
     })),
     pool_total: pool?.length ?? 0,
   };

@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
+import { type AngleId } from "@/lib/angles-shared";
+import {
+  AngleDropdown,
+  AngleExpansion,
+  type SourceState,
+  type Stance,
+} from "./angle-dropdown";
 
 // Topic picker component — sprint 1C Lane F.
 // Fetches /api/brands/[id]/topics, shows top-5 cards, supports
@@ -17,6 +24,7 @@ type Topic = {
   source_metadata: unknown;
   score: number | null;
   created_at: string;
+  article_extract_status?: string | null;
 };
 
 type TopicsResponse = {
@@ -30,6 +38,15 @@ type Props = {
   onSelect: (topic: Topic | null) => void;
   refreshKey: number;
   disabled?: boolean;
+  // Angle-of-approach state, owned by writer-client and threaded per card.
+  angle: AngleId | null;
+  onPickAngle: (
+    a: AngleId | null,
+    topic: { id: string; topic_text: string },
+  ) => void;
+  stance: Stance;
+  onStanceChange: (s: Stance) => void;
+  sourceState: SourceState;
 };
 
 export function TopicPicker({
@@ -38,6 +55,11 @@ export function TopicPicker({
   onSelect,
   refreshKey,
   disabled,
+  angle,
+  onPickAngle,
+  stance,
+  onStanceChange,
+  sourceState,
 }: Props) {
   const t = useTranslations("writer.topicPicker");
   const [topics, setTopics] = useState<Topic[] | null>(null);
@@ -186,6 +208,11 @@ export function TopicPicker({
               selected={selectedId === topic.id}
               onClick={() => handleCardClick(topic)}
               disabled={disabled ?? false}
+              angle={selectedId === topic.id ? angle : null}
+              onPickAngle={(a) => onPickAngle(a, topic)}
+              stance={stance}
+              onStanceChange={onStanceChange}
+              sourceState={sourceState}
             />
           ))}
         </div>
@@ -199,80 +226,175 @@ function TopicCard({
   selected,
   onClick,
   disabled,
+  angle,
+  onPickAngle,
+  stance,
+  onStanceChange,
+  sourceState,
 }: {
   topic: Topic;
   selected: boolean;
   onClick: () => void;
   disabled: boolean;
+  angle: AngleId | null;
+  onPickAngle: (a: AngleId | null) => void;
+  stance: Stance;
+  onStanceChange: (s: Stance) => void;
+  sourceState: SourceState;
 }) {
   const t = useTranslations("writer.topicPicker");
   const sourceLabel = sourceLabelFor(topic.source as TopicSource, t);
   const sourceColor = sourceColorFor(topic.source as TopicSource);
+  const sourceUrl = sourceUrlFor(topic);
 
+  // Wrapper holds the card visual (border/background) so the "view source"
+  // anchor can sit OUTSIDE the selectable <button> — an anchor nested in a
+  // button is invalid and would toggle selection on click.
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
+    <div
       style={{
-        textAlign: "left",
-        padding: "10px 12px",
+        position: "relative",
         background: selected ? "var(--raised)" : "var(--surface)",
         border: `1px solid ${selected ? "var(--info)" : "var(--border-strong)"}`,
         borderRadius: 6,
-        cursor: disabled ? "not-allowed" : "pointer",
-        outline: "none",
         transition: "border-color 120ms ease, background 120ms ease",
         opacity: disabled ? 0.6 : 1,
-        width: "100%",
       }}
     >
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        style={{
+          textAlign: "left",
+          padding: "10px 12px",
+          background: "transparent",
+          border: 0,
+          borderRadius: 6,
+          cursor: disabled ? "not-allowed" : "pointer",
+          outline: "none",
+          width: "100%",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginBottom: 6,
+          }}
+        >
+          <span
+            style={{
+              ...mono(9, sourceColor),
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+              padding: "2px 5px",
+              border: `1px solid ${sourceColor}`,
+              borderRadius: 3,
+              opacity: 0.85,
+            }}
+          >
+            {sourceLabel}
+          </span>
+          {topic.article_extract_status === "success" && (
+            <span
+              style={{
+                ...mono(9, "var(--ok, var(--info))"),
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+              }}
+            >
+              {t("sourceReady")}
+            </span>
+          )}
+          {selected && (
+            <span
+              style={{
+                ...mono(9, "var(--info)"),
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+              }}
+            >
+              ✓ {t("selected")}
+            </span>
+          )}
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            lineHeight: 1.45,
+            color: "var(--ink)",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {topic.topic_text}
+        </div>
+        {renderMetadata(topic)}
+      </button>
+      {/* Footer: source link (left) + angle pill (right). Distinct hit
+          targets; the pill stops propagation so it never toggles selection. */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 6,
-          marginBottom: 6,
+          justifyContent: "space-between",
+          gap: 8,
+          margin: "0 12px 10px",
+          minHeight: 26,
         }}
       >
-        <span
-          style={{
-            ...mono(9, sourceColor),
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            padding: "2px 5px",
-            border: `1px solid ${sourceColor}`,
-            borderRadius: 3,
-            opacity: 0.85,
-          }}
-        >
-          {sourceLabel}
-        </span>
-        {selected && (
-          <span
+        {sourceUrl ? (
+          <a
+            href={sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            aria-label={t("viewSourceAria", { topic: topic.topic_text })}
             style={{
-              ...mono(9, "var(--info)"),
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
+              ...mono(10, "var(--ink-muted)"),
+              textDecoration: "none",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--info)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--ink-muted)";
             }}
           >
-            ✓ {t("selected")}
-          </span>
+            {t("viewSource")}
+          </a>
+        ) : (
+          <span />
         )}
+        <AngleDropdown angle={angle} onPick={onPickAngle} disabled={disabled} />
       </div>
-      <div
-        style={{
-          fontSize: 13,
-          lineHeight: 1.45,
-          color: "var(--ink)",
-          overflowWrap: "anywhere",
-        }}
-      >
-        {topic.topic_text}
-      </div>
-      {renderMetadata(topic)}
-    </button>
+      {/* Selected card + angle → reveal source-status (+ comment stance). */}
+      {selected && angle !== null && (
+        <div style={{ margin: "0 12px 12px" }}>
+          <AngleExpansion
+            angle={angle}
+            sourceState={sourceState}
+            stance={stance}
+            onStanceChange={onStanceChange}
+            disabled={disabled}
+          />
+        </div>
+      )}
+    </div>
   );
+}
+
+// Source URL for the "view source" link — only web_search topics carry a
+// crawlable source_url, and only http(s) is rendered.
+function sourceUrlFor(topic: Topic): string | null {
+  if (topic.source !== "web_search") return null;
+  const meta = topic.source_metadata;
+  if (!meta || typeof meta !== "object") return null;
+  const url = (meta as Record<string, unknown>).source_url;
+  if (typeof url !== "string") return null;
+  if (!url.startsWith("http://") && !url.startsWith("https://")) return null;
+  return url;
 }
 
 function renderMetadata(topic: Topic) {

@@ -1,11 +1,16 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { SepioMark } from "@/components/shell/sepio-mark";
 import { adaptFor, type Platform } from "@/lib/format-adapter";
+import {
+  ANGLES_USING_ARTICLE,
+  type AngleId,
+} from "@/lib/angles-shared";
 import { saveDraft } from "./actions";
 import { TopicPicker } from "./_components/topic-picker";
+import { AngleDropdown, AngleExpansion } from "./_components/angle-dropdown";
 
 type PickedTopic = {
   id: string;
@@ -17,6 +22,23 @@ type GenerateResponse = {
   content: string;
   status: "draft" | "pending_approval";
   cache_read_tokens: number;
+  grounded: boolean;
+  source: { url: string; title: string | null } | null;
+};
+
+// Source-hydration state for the picked topic + selected article-using angle.
+// 'unavailable' covers the logical no-fetch cases: the apply angle, or free-text
+// (no picked candidate). 'failed' = fetch attempted but the article wasn't
+// retrievable — we stay honest and write from the topic gist.
+type SourceState = {
+  status: "idle" | "checking" | "success" | "failed" | "unavailable";
+  url?: string;
+  title?: string | null;
+};
+
+type HydrateResponse = {
+  status: "success" | "failed" | "unavailable";
+  source: { url: string; title: string | null } | null;
 };
 
 type Stage =
@@ -64,6 +86,24 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
   const [humanizeSnapshot, setHumanizeSnapshot] = useState<string | null>(null);
   // Topic picker state — sprint 1C Lane F.
   const [pickedTopic, setPickedTopic] = useState<PickedTopic | null>(null);
+  // Angle-of-approach (topic mode only). null = no angle, existing behavior.
+  const [angle, setAngle] = useState<AngleId | null>(null);
+  // Stance branch — only meaningful when angle === "comment".
+  const [stance, setStance] = useState({
+    sentiment: "like" as "like" | "dislike",
+    note: "",
+  });
+  // Source hydration for the picked topic + article-using angle. Drives the
+  // source-status line (card / typed-path) and pre-caches the extract server-side.
+  const [sourceState, setSourceState] = useState<SourceState>({
+    status: "idle",
+  });
+  // Grounding of the CURRENT draft — captured at generate time so the editor
+  // header chip reflects the post on screen, not the live angle selection.
+  const [draftGrounding, setDraftGrounding] = useState<{
+    grounded: boolean;
+    source: { url: string; title: string | null } | null;
+  } | null>(null);
   // Increment to trigger TopicPicker re-fetch (e.g. after generate consumes a card).
   const [topicsRefreshKey, setTopicsRefreshKey] = useState(0);
   // Right preview panel can collapse to the right edge.
@@ -87,6 +127,73 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     stage === "saving" ||
     stage === "publishing";
   const dirty = postId !== null && content !== originalContent;
+  // Generation requires real input: a topic (picked card or typed hint) in topic
+  // mode, or a long-enough source in article mode. The empty-topic "surprise me"
+  // path is gated off until topic automation lands (Григорий 2026-06-03) — an
+  // angle on an empty topic produces a useless "send me the gist" meta-reply.
+  const canGenerate =
+    mode === "article"
+      ? sourceText.trim().length >= 50
+      : pickedTopic !== null || topic.trim().length > 0;
+
+  // Source hydration — when the user picks an article-using angle AND a topic
+  // candidate, pre-fetch + cache the source article so generation is grounded
+  // and instant. Keyed on (pickedTopic, angle); a request key guards against
+  // duplicate inflight calls and stale responses (selection changed mid-flight).
+  const hydrateKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Only article-using angles in topic mode need a source.
+    const usesArticle =
+      mode === "topic" && angle !== null && ANGLES_USING_ARTICLE.has(angle);
+
+    if (!usesArticle || !pickedTopic) {
+      // apply angle, no angle, or free-text → logically source-free, no fetch.
+      hydrateKeyRef.current = null;
+      setSourceState({
+        status: angle === null ? "idle" : "unavailable",
+      });
+      return;
+    }
+
+    const key = `${pickedTopic.id}::${angle}`;
+    hydrateKeyRef.current = key;
+    setSourceState({ status: "checking" });
+
+    let cancelled = false;
+    (async () => {
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/topics/${pickedTopic.id}/hydrate-source`,
+          { method: "POST" },
+        );
+      } catch {
+        if (cancelled || hydrateKeyRef.current !== key) return;
+        setSourceState({ status: "failed" });
+        return;
+      }
+      if (cancelled || hydrateKeyRef.current !== key) return;
+      if (!res.ok) {
+        setSourceState({ status: "failed" });
+        return;
+      }
+      const data = (await res.json().catch(() => null)) as HydrateResponse | null;
+      if (cancelled || hydrateKeyRef.current !== key) return;
+      if (!data) {
+        setSourceState({ status: "failed" });
+        return;
+      }
+      setSourceState({
+        status: data.status,
+        url: data.source?.url,
+        title: data.source?.title ?? null,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, angle, pickedTopic]);
 
   async function onGenerate() {
     setError(null);
@@ -99,6 +206,8 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
       topic_hint?: string;
       source_text?: string;
       topic_candidate_id?: string;
+      angle?: AngleId;
+      stance?: { sentiment: "like" | "dislike"; note: string };
     } = {
       brand_id: brandId,
     };
@@ -116,6 +225,20 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
       payload.topic_candidate_id = pickedTopic.id;
     } else {
       payload.topic_hint = topic.trim() || undefined;
+    }
+
+    // Angle-of-approach — topic mode only. Comment angle requires a stance note;
+    // guard before the fetch, mirroring the articleTooShort guard above.
+    if (mode === "topic" && angle) {
+      if (angle === "comment" && stance.note.trim().length === 0) {
+        setError(t("angle.commentNoteRequired"));
+        setStage("error");
+        return;
+      }
+      payload.angle = angle;
+      if (angle === "comment") {
+        payload.stance = { sentiment: stance.sentiment, note: stance.note.trim() };
+      }
     }
 
     let res: Response;
@@ -152,6 +275,13 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     setPostId(data.post_id);
     setStatus(data.status);
     setStage("ready");
+    // Capture grounding for the editor-header chip — only when an angle drove
+    // this draft (non-angle drafts have no source provenance to surface).
+    setDraftGrounding(
+      mode === "topic" && angle
+        ? { grounded: data.grounded, source: data.source }
+        : null,
+    );
     if (!title) {
       const firstLine = data.content.split("\n").find((l) => l.trim()) ?? "";
       setTitle(firstLine.slice(0, 80));
@@ -238,6 +368,14 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     }
   }
 
+  // Picking an angle from a topic card. Selecting an angle also selects that
+  // card (deselecting others). Picking "No angle" (a === null) clears the angle
+  // but keeps the card selected — the user stays on that topic.
+  function handlePickAngle(a: AngleId | null, topic: PickedTopic) {
+    if (pickedTopic?.id !== topic.id) handleTopicSelect(topic);
+    setAngle(a);
+  }
+
   async function onPublish() {
     if (!postId) return;
     setError(null);
@@ -279,12 +417,17 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     setStage("published");
   }
 
-  const generateLabel =
+  const baseGenerateLabel =
     stage === "generating"
       ? t("generating")
       : postId
         ? t("regenerate")
         : t("generate");
+  // Append the active angle's short label when one is selected (topic mode).
+  const generateLabel =
+    mode === "topic" && angle
+      ? `${baseGenerateLabel} · ${t(`angle.${angle}.label`)}`
+      : baseGenerateLabel;
 
   return (
     <div
@@ -358,16 +501,30 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           }
           refreshKey={topicsRefreshKey}
           disabled={busy}
+          angle={angle}
+          onPickAngle={(a, tp) =>
+            handlePickAngle(a, { id: tp.id, topic_text: tp.topic_text })
+          }
+          stance={stance}
+          onStanceChange={setStance}
+          sourceState={sourceState}
         />
 
         <Section
           title={t("prompt")}
           right={
-            <span style={mono(11, "var(--ink-faint)")}>
-              {mode === "article"
-                ? `${sourceText.length} / 30000`
-                : `${topic.length} / 1000`}
-            </span>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: 10 }}
+            >
+              {mode === "topic" && (
+                <AngleDropdown angle={angle} onPick={setAngle} disabled={busy} />
+              )}
+              <span style={mono(11, "var(--ink-faint)")}>
+                {mode === "article"
+                  ? `${sourceText.length} / 30000`
+                  : `${topic.length} / 1000`}
+              </span>
+            </div>
           }
         >
           {/* Mode toggle */}
@@ -432,6 +589,20 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
               style={inputBase(true)}
             />
           )}
+
+          {/* Typed-topic angle expansion — equivalent of the card expansion
+              for a user typing their own topic (no picked candidate). */}
+          {mode === "topic" && !pickedTopic && angle !== null && (
+            <div style={{ marginTop: 12 }}>
+              <AngleExpansion
+                angle={angle}
+                sourceState={sourceState}
+                stance={stance}
+                onStanceChange={setStance}
+                disabled={busy}
+              />
+            </div>
+          )}
         </Section>
 
         <Section title={t("channel")}>
@@ -459,8 +630,8 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
         <Section>
           <button
             onClick={onGenerate}
-            disabled={busy}
-            style={primaryButton(busy, 40)}
+            disabled={busy || !canGenerate}
+            style={primaryButton(busy || !canGenerate, 40)}
           >
             {generateLabel}
           </button>
@@ -537,6 +708,7 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           />
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <Badge variant="neutral">LINKEDIN</Badge>
+            {draftGrounding && <GroundingChip grounding={draftGrounding} />}
             <span style={mono(12, overLimit ? "var(--risky)" : "var(--ink-faint)")}>
               {t("charsCounter", { current: charCount, max: LINKEDIN_MAX })}
             </span>
@@ -723,6 +895,35 @@ function Section({
   );
 }
 
+// Editor-header provenance chip for the current draft. Grounded → links the
+// source domain; otherwise (angle used but no source) a muted "from the topic".
+function GroundingChip({
+  grounding,
+}: {
+  grounding: {
+    grounded: boolean;
+    source: { url: string; title: string | null } | null;
+  };
+}) {
+  const t = useTranslations("writer");
+  if (grounding.grounded && grounding.source?.url) {
+    const url = grounding.source.url;
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ ...mono(11, "var(--info)"), textDecoration: "none" }}
+      >
+        {t("groundedFrom", { domain: hostOf(url) })} ↗
+      </a>
+    );
+  }
+  return (
+    <span style={mono(11, "var(--ink-faint)")}>{t("groundedTopicOnly")}</span>
+  );
+}
+
 function CollapsibleSection({
   title,
   open,
@@ -874,9 +1075,11 @@ function BrandSummaryRow({
 function Segmented<T extends string>({
   options,
   value,
+  onChange,
 }: {
   options: { label: string; value: T; icon?: React.ReactNode; disabled?: boolean }[];
   value: T;
+  onChange?: (value: T) => void;
 }) {
   return (
     <div
@@ -896,7 +1099,11 @@ function Segmented<T extends string>({
         return (
           <button
             key={opt.value}
+            type="button"
             disabled={opt.disabled}
+            onClick={
+              onChange && !opt.disabled ? () => onChange(opt.value) : undefined
+            }
             style={{
               height: 26,
               background: active ? "var(--raised)" : "transparent",
@@ -1069,6 +1276,16 @@ function mono(size: number, color: string): React.CSSProperties {
     letterSpacing: "0.02em",
     fontVariantNumeric: "tabular-nums",
   };
+}
+
+// Bare host for a source URL, e.g. "https://www.x.com/a" -> "x.com". Falls back
+// to the raw string if the URL can't be parsed.
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 function inputBase(isTextarea: boolean): React.CSSProperties {
