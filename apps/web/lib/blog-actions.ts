@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { blockingFailures } from "@/lib/_private/blog-firewall";
+import { authorSlugForAccount } from "@/lib/_private/author-accounts";
+import { getAuthor } from "@/lib/authors";
 
 // blog_posts isn't in database.types.ts yet (types weren't regenerated after
 // PR1 — fast-follow). The typed client narrows .from() to the known-table union
@@ -73,14 +75,26 @@ export async function createDraft(input: {
   const slug = slugify(title);
   if (!slug) return { ok: false, error: "Title must contain letters or numbers" };
 
-  // Author defaults to the current admin (PR4 owns the author registry).
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("display_name")
-    .eq("id", gate.userId)
-    .maybeSingle();
-  const authorName = (account?.display_name as string | null) ?? null;
-  const authorSlug = authorName ? slugify(authorName) : null;
+  // Author defaults to the signed-in admin. If they're a registered blog author
+  // (lib/authors.ts), use that canonical identity so the published post links to
+  // /authors/{slug}; otherwise fall back to their app display_name. The author
+  // fields stay editable in the editor either way.
+  let authorName: string | null;
+  let authorSlug: string | null;
+  const registrySlug = authorSlugForAccount(gate.userId);
+  const registryAuthor = registrySlug ? getAuthor(registrySlug) : null;
+  if (registryAuthor) {
+    authorName = registryAuthor.name;
+    authorSlug = registryAuthor.slug;
+  } else {
+    const { data: account } = await supabase
+      .from("accounts")
+      .select("display_name")
+      .eq("id", gate.userId)
+      .maybeSingle();
+    authorName = (account?.display_name as string | null) ?? null;
+    authorSlug = authorName ? slugify(authorName) : null;
+  }
 
   const { data, error } = await supabase
     .from("blog_posts")
