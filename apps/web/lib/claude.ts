@@ -6,6 +6,7 @@ import {
   TEMPERATURE_BY_FORMAT,
   type GenFormat,
 } from "./_private/format-specs";
+import { buildBlogArticleUserText } from "./_private/blog-article";
 
 // Per-format draft generation. Two cached system blocks:
 //   1. Brand context (voice, VOC, samples) — stable per brand, so one topic
@@ -214,6 +215,21 @@ export async function generatePostFromUserMessage(
     throw new ClaudeError("user message is empty");
   }
   return callClaude(config, primaryLanguage, trimmed, "linkedin_post", opts);
+}
+
+// Blog-article generation (blog-PR6): a full long-form article from a brief.
+// Reuses the shared `blog` FORMAT_SPEC (Sonnet, GEO structure) and the brand
+// voice system prompt. Output language is always English — the brief may be in
+// any language (buildBrandContext's "write in English regardless of the hint
+// language" instruction handles a Russian brief → English article).
+export async function generateBlogArticle(
+  config: BrandConfigRow,
+  brief: string,
+  opts?: GenerateOptions,
+): Promise<GenerateResult> {
+  const b = brief.trim();
+  if (!b) throw new ClaudeError("brief is empty");
+  return callClaude(config, "en", buildBlogArticleUserText(b), "blog", opts);
 }
 
 // Editorial Memory (T3): rewrite an existing post per a natural-language

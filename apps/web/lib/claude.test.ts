@@ -1,5 +1,10 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { buildBrandContext, ClaudeError, generatePost } from "./claude";
+import {
+  buildBrandContext,
+  ClaudeError,
+  generatePost,
+  generateBlogArticle,
+} from "./claude";
 import type { Tables } from "./supabase/database.types";
 
 type BrandConfig = Tables<"brand_configs">;
@@ -182,5 +187,32 @@ describe("generatePost — auth & validation", () => {
     }
     expect(err).toBeInstanceOf(ClaudeError);
     expect((err as ClaudeError).message).not.toMatch(/not configured/);
+  });
+});
+
+describe("generateBlogArticle — guards", () => {
+  let originalKey: string | undefined;
+
+  beforeEach(() => {
+    originalKey = process.env.ANTHROPIC_API_KEY;
+  });
+
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalKey;
+  });
+
+  test("rejects an empty brief before touching the API", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test-key-not-real";
+    await expect(
+      generateBlogArticle(fixtureConfig(), "   "),
+    ).rejects.toThrow(/brief is empty/);
+  });
+
+  test("throws ClaudeError when ANTHROPIC_API_KEY missing", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    await expect(
+      generateBlogArticle(fixtureConfig(), "a real brief about HVAC humidity"),
+    ).rejects.toThrow(/ANTHROPIC_API_KEY/);
   });
 });

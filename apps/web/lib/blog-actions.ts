@@ -7,7 +7,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { blockingFailures } from "@/lib/_private/blog-firewall";
 import { authorSlugForAccount } from "@/lib/_private/author-accounts";
+import { BLOG_BRAND_ID } from "@/lib/_private/blog-article";
 import { getAuthor } from "@/lib/authors";
+import { generateBlogArticle, ClaudeError, type BrandConfigRow } from "@/lib/claude";
 
 // blog_posts isn't in database.types.ts yet (types weren't regenerated after
 // PR1 — fast-follow). The typed client narrows .from() to the known-table union
@@ -312,4 +314,53 @@ export async function uploadBlogImage(
 
   const { data } = service.storage.from("blog-images").getPublicUrl(path);
   return { ok: true, url: data.publicUrl };
+}
+
+// ── generateBlogDraft ─────────────────────────────────────────────────────
+// Generate a full article draft (Markdown) from a brief. The brief may be in
+// any language (e.g. Russian); the article is always English. Reuses the shared
+// `blog` generation format + the founder brand voice (WOW SOLUTIONS). The result
+// is a DRAFT the admin edits and runs through the firewall before publishing —
+// no Pangram, no auto-save.
+const GenerateDraftSchema = z.object({
+  brief: z.string().trim().min(20, "Brief is too short").max(4000),
+});
+
+export type GenerateDraftResult =
+  | { ok: true; markdown: string }
+  | { ok: false; error: string };
+
+export async function generateBlogDraft(input: {
+  brief: string;
+}): Promise<GenerateDraftResult> {
+  const parsed = GenerateDraftSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid brief" };
+  }
+
+  const supabase = await blogClient();
+  const gate = await requireBlogAdmin(supabase);
+  if ("error" in gate) return { ok: false, error: gate.error };
+
+  // brand_configs is owner-scoped by RLS; read the blog's voice config via
+  // service-role so generation is independent of which admin is signed in.
+  const service = createServiceRoleClient();
+  const { data: cfg, error: cfgErr } = await service
+    .from("brand_configs")
+    .select("*")
+    .eq("brand_id", BLOG_BRAND_ID)
+    .maybeSingle();
+  if (cfgErr) return { ok: false, error: cfgErr.message };
+  if (!cfg) return { ok: false, error: "Blog brand voice config not found" };
+
+  try {
+    const result = await generateBlogArticle(
+      cfg as BrandConfigRow,
+      parsed.data.brief,
+    );
+    return { ok: true, markdown: result.text };
+  } catch (e) {
+    const msg = e instanceof ClaudeError ? e.message : "Generation failed";
+    return { ok: false, error: msg };
+  }
 }

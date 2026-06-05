@@ -6,6 +6,10 @@ import { firewallChecklistView } from "@/lib/_private/blog-firewall";
 import { BlogShell } from "../../shell";
 import { BlogEditor, type BlogEditorInitial } from "../_components/blog-editor";
 
+// Long-form article generation (generateBlogDraft server action) runs Sonnet
+// for ~20-60s. Raise the function ceiling so the action isn't cut off.
+export const maxDuration = 90;
+
 type PageProps = {
   params: Promise<{ id: string }>;
 };

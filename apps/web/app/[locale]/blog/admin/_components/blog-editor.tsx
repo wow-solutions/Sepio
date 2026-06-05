@@ -3,7 +3,12 @@
 import { useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { BlogBody } from "@/components/blog/blog-body";
-import { updatePost, deleteBlogPost, uploadBlogImage } from "@/lib/blog-actions";
+import {
+  updatePost,
+  deleteBlogPost,
+  uploadBlogImage,
+  generateBlogDraft,
+} from "@/lib/blog-actions";
 import { FirewallModal, type FirewallItemView } from "./firewall-modal";
 
 type Mode = "write" | "preview";
@@ -60,7 +65,34 @@ export function BlogEditor({
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const [uploading, setUploading] = useState(false);
 
+  // Article generation: a brief (any language) → English Markdown draft.
+  const [brief, setBrief] = useState("");
+  const [generating, setGenerating] = useState(false);
+
   const isPublished = status === "published";
+
+  async function onGenerate() {
+    const b = brief.trim();
+    if (b.length < 20) {
+      setErr("Write a longer brief (at least 20 characters) to generate.");
+      return;
+    }
+    if (body.trim() && !window.confirm("Replace the current body with the generated draft?")) {
+      return;
+    }
+    setErr(null);
+    setNotice(null);
+    setGenerating(true);
+    const result = await generateBlogDraft({ brief: b });
+    setGenerating(false);
+    if (result.ok) {
+      setBody(result.markdown);
+      setMode("write");
+      setNotice("Draft generated — review and edit before publishing");
+    } else {
+      setErr(result.error);
+    }
+  }
 
   function pickImage(onUrl: (url: string) => void) {
     onUploadedRef.current = onUrl;
@@ -300,6 +332,48 @@ export function BlogEditor({
           </button>
         </div>
       </Field>
+
+      {/* Generate a draft from a brief (brief can be any language → English article) */}
+      <details style={{ marginBottom: 16 }}>
+        <summary
+          style={{
+            fontSize: 12.5,
+            color: "var(--ink-muted)",
+            cursor: "pointer",
+            marginBottom: 8,
+          }}
+        >
+          ✨ Generate a draft from a brief
+        </summary>
+        <textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          placeholder="Describe what the article should cover. Write in any language — the article is generated in English."
+          rows={4}
+          style={{ ...inputStyle, resize: "vertical" }}
+        />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            marginTop: 8,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onGenerate}
+            disabled={generating}
+            style={smallBtn(generating)}
+          >
+            {generating ? "Generating… (~30s)" : "Generate draft"}
+          </button>
+          <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
+            Fills the body below (asks before replacing existing text). Always
+            review before publishing.
+          </span>
+        </div>
+      </details>
 
       {/* Write | Preview toggle */}
       <div style={{ marginTop: 8, marginBottom: 8 }}>
