@@ -1,4 +1,4 @@
-# Quoteworthy
+# Sepio
 
 > Auditable content automation. Built so AI search engines want to quote you — and so you can verify your secrets are handled safely.
 
@@ -6,7 +6,7 @@
 
 ## Why open?
 
-Quoteworthy will hold your OAuth tokens and API keys — for LinkedIn, your website, and the services we use to research and publish on your behalf. **You shouldn't have to trust us; you should be able to verify us.**
+Sepio will hold your OAuth tokens and API keys — for LinkedIn, your website, and the services we use to research and publish on your behalf. **You shouldn't have to trust us; you should be able to verify us.**
 
 This repo is the open part of the system: authentication, session handling, OAuth flows, Supabase Vault wrappers, row-level security policies, webhook signature checks — every code path that touches a customer secret is here for anyone to read.
 
@@ -49,7 +49,7 @@ supabase/
 docs/          — Privacy, terms, conceptual references
 ```
 
-What you **won't** find here: the content generation prompts, the GEO scoring algorithm, the analytics integrations, the per-tenant configuration UI. Those are the parts that make Quoteworthy worth paying for; they live in the hosted product.
+What you **won't** find here: the content generation prompts, the GEO scoring algorithm, the analytics integrations, the per-tenant configuration UI. Those are the parts that make Sepio worth paying for; they live in the hosted product.
 
 ## Security audit
 
