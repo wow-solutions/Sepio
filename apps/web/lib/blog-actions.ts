@@ -7,7 +7,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { blockingFailures } from "@/lib/_private/blog-firewall";
 import { authorSlugForAccount } from "@/lib/_private/author-accounts";
-import { BLOG_BRAND_ID } from "@/lib/_private/blog-article";
+import {
+  BLOG_BRAND_ID,
+  parseBlogArticleOutput,
+} from "@/lib/_private/blog-article";
 import { getAuthor } from "@/lib/authors";
 import { generateBlogArticle, ClaudeError, type BrandConfigRow } from "@/lib/claude";
 
@@ -327,7 +330,7 @@ const GenerateDraftSchema = z.object({
 });
 
 export type GenerateDraftResult =
-  | { ok: true; markdown: string }
+  | { ok: true; markdown: string; description: string | null }
   | { ok: false; error: string };
 
 export async function generateBlogDraft(input: {
@@ -358,7 +361,8 @@ export async function generateBlogDraft(input: {
       cfg as BrandConfigRow,
       parsed.data.brief,
     );
-    return { ok: true, markdown: result.text };
+    const { body, description } = parseBlogArticleOutput(result.text);
+    return { ok: true, markdown: body, description };
   } catch (e) {
     const msg = e instanceof ClaudeError ? e.message : "Generation failed";
     return { ok: false, error: msg };

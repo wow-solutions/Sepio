@@ -87,6 +87,7 @@ export function BlogEditor({
     setGenerating(false);
     if (result.ok) {
       setBody(result.markdown);
+      if (result.description) setDescription(result.description);
       setMode("write");
       setNotice("Draft generated — review and edit before publishing");
     } else {
