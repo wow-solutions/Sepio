@@ -64,6 +64,27 @@ export async function listPublished(
   return { posts: data ?? [], total: count ?? 0 };
 }
 
+// Published posts by a given author_slug, newest first. Used by the author
+// page; small N so no pagination. Returns [] when the author has no posts yet.
+export async function listPublishedByAuthor(
+  authorSlug: string,
+): Promise<BlogPostListRow[]> {
+  const supabase = await blogClient();
+  const { data, error } = await supabase
+    .from("blog_posts")
+    .select(
+      "slug, title, description, published_at, cover_image_url, author_name",
+    )
+    .eq("locale", "en")
+    .eq("status", "published")
+    .eq("author_slug", authorSlug)
+    .order("published_at", { ascending: false })
+    .returns<BlogPostListRow[]>();
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 // Single published post by slug, or null (-> notFound()).
 export async function getPublishedBySlug(
   slug: string,

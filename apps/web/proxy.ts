@@ -57,8 +57,8 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Skip Next.js internals, favicon, metadata routes (sitemap/robots), and
-    // static files. sitemap.xml/robots.txt must reach their app/ route handlers,
-    // not be swallowed by intl locale routing (would 404).
-    "/((?!_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // static files. sitemap.xml/robots.txt/feed.xml must reach their app/ route
+    // handlers, not be swallowed by intl locale routing (would 404).
+    "/((?!_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|feed\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

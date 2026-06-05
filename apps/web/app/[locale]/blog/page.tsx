@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
-import { alternatesFor, localizedUrl } from "@/lib/seo";
+import { alternatesFor, localizedUrl, SITE_URL } from "@/lib/seo";
 import { listPublished, BLOG_PER_PAGE } from "@/lib/blog";
 import { BlogShell } from "./shell";
 import { BlogIndexJsonLd } from "./_components/blog-jsonld";
@@ -48,7 +48,11 @@ export async function generateMetadata({
   return {
     title: TITLE,
     description: DESCRIPTION,
-    alternates: { ...base, canonical },
+    alternates: {
+      ...base,
+      canonical,
+      types: { "application/rss+xml": `${SITE_URL}/feed.xml` },
+    },
     openGraph: {
       type: "website",
       title: TITLE,

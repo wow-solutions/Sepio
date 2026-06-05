@@ -29,7 +29,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = (await createClient()) as unknown as SupabaseClient;
   const { data } = await supabase
     .from("blog_posts")
-    .select("slug, published_at, material_updated_at")
+    .select("slug, published_at, material_updated_at, author_slug")
     .eq("status", "published")
     .eq("locale", "en")
     .order("published_at", { ascending: false })
@@ -38,8 +38,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         slug: string;
         published_at: string | null;
         material_updated_at: string | null;
+        author_slug: string | null;
       }[]
     >();
+
+  const rows = data ?? [];
 
   const blogIndexEntry: MetadataRoute.Sitemap[number] = {
     url: localizedUrl("en", "blog"),
@@ -48,12 +51,36 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   };
 
-  const postEntries: MetadataRoute.Sitemap = (data ?? []).map((p) => ({
+  const editorialPolicyEntry: MetadataRoute.Sitemap[number] = {
+    url: localizedUrl("en", "blog/editorial-policy"),
+    lastModified,
+    changeFrequency: "yearly",
+    priority: 0.3,
+  };
+
+  const postEntries: MetadataRoute.Sitemap = rows.map((p) => ({
     url: localizedUrl("en", `blog/${p.slug}`),
     lastModified: p.material_updated_at ?? p.published_at ?? lastModified,
     changeFrequency: "monthly",
     priority: 0.7,
   }));
 
-  return [...staticEntries, blogIndexEntry, ...postEntries];
+  // One entry per author who has at least one published post (E-E-A-T hubs).
+  const authorSlugs = [
+    ...new Set(rows.map((p) => p.author_slug).filter((s): s is string => !!s)),
+  ];
+  const authorEntries: MetadataRoute.Sitemap = authorSlugs.map((slug) => ({
+    url: localizedUrl("en", `authors/${slug}`),
+    lastModified,
+    changeFrequency: "monthly",
+    priority: 0.4,
+  }));
+
+  return [
+    ...staticEntries,
+    blogIndexEntry,
+    editorialPolicyEntry,
+    ...postEntries,
+    ...authorEntries,
+  ];
 }

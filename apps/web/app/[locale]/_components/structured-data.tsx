@@ -15,6 +15,12 @@ const GRAPH = {
       sameAs: ["https://github.com/wow-solutions/Sepio"],
       description:
         "Sepio is the expert-content engine for marketing and content agencies — turning client expertise into multi-platform content optimized for generative engines (GEO).",
+      founder: {
+        "@type": "Person",
+        name: "Grigoriy Baranchuk",
+        url: `${SITE_URL}/authors/grigoriy-baranchuk`,
+      },
+      publishingPrinciples: `${SITE_URL}/blog/editorial-policy`,
     },
     {
       "@type": "WebSite",

@@ -57,6 +57,18 @@ export function BlogShell({ children }: { children: React.ReactNode }) {
           Blog
         </Link>
         {" · "}
+        <Link
+          href="/blog/editorial-policy"
+          style={{ color: "var(--ink-faint)" }}
+        >
+          Editorial policy
+        </Link>
+        {" · "}
+        {/* /feed.xml is a non-localized top-level route -> plain anchor, not i18n Link */}
+        <a href="/feed.xml" style={{ color: "var(--ink-faint)" }}>
+          RSS
+        </a>
+        {" · "}
         <Link href="/privacy" style={{ color: "var(--ink-faint)" }}>
           Privacy
         </Link>

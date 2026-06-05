@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { setRequestLocale } from "next-intl/server";
+import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
 import { localizedUrl } from "@/lib/seo";
 import { getPublishedBySlug } from "@/lib/blog";
@@ -94,7 +95,16 @@ export default async function BlogPostPage({ params }: { params: Params }) {
               margin: "0 0 32px",
             }}
           >
-            {post.author_name}
+            {post.author_name && post.author_slug ? (
+              <Link
+                href={`/authors/${post.author_slug}`}
+                style={{ color: "var(--ink-faint)" }}
+              >
+                {post.author_name}
+              </Link>
+            ) : (
+              post.author_name
+            )}
             {post.author_name && date ? " · " : ""}
             {date && <time dateTime={post.published_at ?? undefined}>{date}</time>}
           </p>
