@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition, type CSSProperties } from "react";
+import { useRef, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { BlogBody } from "@/components/blog/blog-body";
-import { updatePost, deleteBlogPost } from "@/lib/blog-actions";
+import { updatePost, deleteBlogPost, uploadBlogImage } from "@/lib/blog-actions";
 import { FirewallModal, type FirewallItemView } from "./firewall-modal";
 
 type Mode = "write" | "preview";
@@ -53,7 +53,56 @@ export function BlogEditor({
   const [showFirewall, setShowFirewall] = useState(false);
   const [pending, start] = useTransition();
 
+  // Image upload: one hidden <input type="file"> reused for body/cover/OG. The
+  // button that opens it stores where the resulting URL should land.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const onUploadedRef = useRef<(url: string) => void>(() => {});
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [uploading, setUploading] = useState(false);
+
   const isPublished = status === "published";
+
+  function pickImage(onUrl: (url: string) => void) {
+    onUploadedRef.current = onUrl;
+    fileInputRef.current?.click();
+  }
+
+  async function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be re-picked later
+    if (!file) return;
+    setErr(null);
+    setNotice(null);
+    setUploading(true);
+    const fd = new FormData();
+    fd.append("file", file);
+    const result = await uploadBlogImage(fd);
+    setUploading(false);
+    if (result.ok) {
+      onUploadedRef.current(result.url);
+      setNotice("Image uploaded");
+    } else {
+      setErr(result.error);
+    }
+  }
+
+  // Insert markdown at the body textarea caret (falls back to append).
+  function insertIntoBody(markdown: string) {
+    const ta = bodyRef.current;
+    if (!ta) {
+      setBody((b) => b + markdown);
+      return;
+    }
+    const startPos = ta.selectionStart ?? body.length;
+    const endPos = ta.selectionEnd ?? body.length;
+    const next = body.slice(0, startPos) + markdown + body.slice(endPos);
+    setBody(next);
+    requestAnimationFrame(() => {
+      ta.focus();
+      const caret = startPos + markdown.length;
+      ta.setSelectionRange(caret, caret);
+    });
+  }
 
   function commonInput() {
     return {
@@ -157,6 +206,15 @@ export function BlogEditor({
 
   return (
     <>
+      {/* Single hidden file input, reused for body/cover/OG uploads */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        onChange={onFileChosen}
+        style={{ display: "none" }}
+      />
+
       {/* Slug (read-only — immutable after create) + status */}
       <div
         style={{
@@ -225,12 +283,22 @@ export function BlogEditor({
       </div>
 
       <Field label="Cover image URL" hint="Confirm it has alt text before publishing.">
-        <input
-          value={coverImageUrl}
-          onChange={(e) => setCoverImageUrl(e.target.value)}
-          placeholder="https://…"
-          style={inputStyle}
-        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={coverImageUrl}
+            onChange={(e) => setCoverImageUrl(e.target.value)}
+            placeholder="https://…"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={() => pickImage(setCoverImageUrl)}
+            disabled={uploading}
+            style={smallBtn(uploading)}
+          >
+            {uploading ? "Uploading…" : "Upload"}
+          </button>
+        </div>
       </Field>
 
       {/* Write | Preview toggle */}
@@ -281,24 +349,52 @@ export function BlogEditor({
         }}
       >
         {mode === "write" ? (
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Write the post in Markdown…"
-            style={{
-              width: "100%",
-              minHeight: 360,
-              fontFamily: "var(--font-mono)",
-              fontSize: 15,
-              lineHeight: 1.65,
-              color: "var(--ink)",
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              resize: "vertical",
-              padding: 0,
-            }}
-          />
+          <>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 12,
+                paddingBottom: 12,
+                borderBottom: "1px solid var(--border-subtle)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  pickImage((url) => insertIntoBody(`\n![](${url})\n`))
+                }
+                disabled={uploading}
+                style={smallBtn(uploading)}
+              >
+                {uploading ? "Uploading…" : "🖼 Insert image"}
+              </button>
+              <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
+                Uploads to storage, inserts Markdown at the cursor. Add alt text
+                inside the brackets.
+              </span>
+            </div>
+            <textarea
+              ref={bodyRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Write the post in Markdown…"
+              style={{
+                width: "100%",
+                minHeight: 360,
+                fontFamily: "var(--font-mono)",
+                fontSize: 15,
+                lineHeight: 1.65,
+                color: "var(--ink)",
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                resize: "vertical",
+                padding: 0,
+              }}
+            />
+          </>
         ) : (
           <div className="prose">
             <BlogBody source={body} />
@@ -333,12 +429,22 @@ export function BlogEditor({
           />
         </Field>
         <Field label="OG image URL" hint="Falls back to the cover image.">
-          <input
-            value={ogImageUrl}
-            onChange={(e) => setOgImageUrl(e.target.value)}
-            placeholder="https://…"
-            style={inputStyle}
-          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={ogImageUrl}
+              onChange={(e) => setOgImageUrl(e.target.value)}
+              placeholder="https://…"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <button
+              type="button"
+              onClick={() => pickImage(setOgImageUrl)}
+              disabled={uploading}
+              style={smallBtn(uploading)}
+            >
+              {uploading ? "Uploading…" : "Upload"}
+            </button>
+          </div>
         </Field>
       </details>
 
@@ -553,6 +659,23 @@ function dangerBtn(disabled: boolean): CSSProperties {
     fontWeight: 500,
     cursor: disabled ? "not-allowed" : "pointer",
     marginLeft: "auto",
+    opacity: disabled ? 0.6 : 1,
+  };
+}
+
+function smallBtn(disabled: boolean): CSSProperties {
+  return {
+    flex: "0 0 auto",
+    height: 34,
+    padding: "0 12px",
+    background: "transparent",
+    color: "var(--ink)",
+    border: "1px solid var(--border-strong)",
+    borderRadius: 6,
+    fontSize: 12.5,
+    fontWeight: 500,
+    cursor: disabled ? "not-allowed" : "pointer",
+    whiteSpace: "nowrap",
     opacity: disabled ? 0.6 : 1,
   };
 }

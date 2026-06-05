@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { blockingFailures } from "@/lib/_private/blog-firewall";
 import { authorSlugForAccount } from "@/lib/_private/author-accounts";
 import { getAuthor } from "@/lib/authors";
@@ -268,4 +269,47 @@ export async function deleteBlogPost(input: {
 
   revalidatePath("/blog/admin");
   return { ok: true };
+}
+
+// ── uploadBlogImage ───────────────────────────────────────────────────────
+// Upload a cover/OG/inline image to the public `blog-images` bucket and return
+// its public URL. The bucket has no client write policy (default-deny), so the
+// write goes through the service-role client — gated by is_blog_admin first.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // mirrors the bucket's file_size_limit
+const IMAGE_EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+export type UploadResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string };
+
+export async function uploadBlogImage(
+  formData: FormData,
+): Promise<UploadResult> {
+  const supabase = await blogClient();
+  const gate = await requireBlogAdmin(supabase);
+  if ("error" in gate) return { ok: false, error: gate.error };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "No file provided" };
+  if (file.size === 0) return { ok: false, error: "Empty file" };
+  if (file.size > MAX_IMAGE_BYTES)
+    return { ok: false, error: "Image is larger than 5 MB" };
+  const ext = IMAGE_EXT[file.type];
+  if (!ext)
+    return { ok: false, error: "Only PNG, JPEG, WebP, or GIF images" };
+
+  const service = createServiceRoleClient();
+  const path = `${gate.userId}/${crypto.randomUUID()}.${ext}`;
+  const { error: upErr } = await service.storage
+    .from("blog-images")
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (upErr) return { ok: false, error: upErr.message };
+
+  const { data } = service.storage.from("blog-images").getPublicUrl(path);
+  return { ok: true, url: data.publicUrl };
 }
