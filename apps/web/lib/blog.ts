@@ -18,6 +18,9 @@ export type BlogPostListRow = {
   description: string | null;
   published_at: string | null;
   cover_image_url: string | null;
+  // body is selected so the index can derive a card/lead thumbnail from the
+  // first inline image when cover_image_url is empty (extractHeroImage fallback).
+  body: string;
   author_name: string | null;
 };
 
@@ -51,7 +54,7 @@ export async function listPublished(
   const { data, count, error } = await supabase
     .from("blog_posts")
     .select(
-      "slug, title, description, published_at, cover_image_url, author_name",
+      "slug, title, description, published_at, cover_image_url, body, author_name",
       { count: "exact" },
     )
     .eq("locale", "en") // content is en-only for now
@@ -73,7 +76,7 @@ export async function listPublishedByAuthor(
   const { data, error } = await supabase
     .from("blog_posts")
     .select(
-      "slug, title, description, published_at, cover_image_url, author_name",
+      "slug, title, description, published_at, cover_image_url, body, author_name",
     )
     .eq("locale", "en")
     .eq("status", "published")

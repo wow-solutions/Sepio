@@ -3,9 +3,15 @@ import { setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
 import { alternatesFor, localizedUrl, SITE_URL } from "@/lib/seo";
-import { listPublished, BLOG_PER_PAGE } from "@/lib/blog";
+import {
+  listPublished,
+  BLOG_PER_PAGE,
+  type BlogPostListRow,
+} from "@/lib/blog";
+import { splitFeatured, extractHeroImage } from "@/lib/blog-render";
 import { BlogShell } from "./shell";
 import { BlogIndexJsonLd } from "./_components/blog-jsonld";
+import "./blog.css";
 
 type Params = Promise<{ locale: string }>;
 type Search = Promise<{ page?: string }>;
@@ -24,6 +30,22 @@ function formatDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? null : DATE_FMT.format(d);
+}
+
+// List rows carry no markdown body, so the hero comes from cover_image_url
+// (or null). Adapt the list row to extractHeroImage's { cover_image_url, body }.
+function heroUrlFor(post: BlogPostListRow): string | null {
+  return extractHeroImage({
+    cover_image_url: post.cover_image_url,
+    body: post.body,
+  }).heroUrl;
+}
+
+function bylineText(post: BlogPostListRow): {
+  author: string | null;
+  date: string | null;
+} {
+  return { author: post.author_name, date: formatDate(post.published_at) };
 }
 
 export async function generateMetadata({
@@ -68,6 +90,36 @@ export async function generateMetadata({
   };
 }
 
+function Byline({ post }: { post: BlogPostListRow }) {
+  const { author, date } = bylineText(post);
+  if (!author && !date) return null;
+  return (
+    <p className="bi-by">
+      {author && <b>{author}</b>}
+      {author && date ? " · " : ""}
+      {date && (
+        <time dateTime={post.published_at ?? undefined}>{date}</time>
+      )}
+    </p>
+  );
+}
+
+function Card({ post }: { post: BlogPostListRow }) {
+  const heroUrl = heroUrlFor(post);
+  return (
+    <Link className="bi-card" href={`/blog/${post.slug}`}>
+      {heroUrl && (
+        <span className="bi-card-ph">
+          <img src={heroUrl} alt="" />
+        </span>
+      )}
+      <h3>{post.title}</h3>
+      {post.description && <p>{post.description}</p>}
+      <Byline post={post} />
+    </Link>
+  );
+}
+
 export default async function BlogIndexPage({
   params,
   searchParams,
@@ -83,98 +135,60 @@ export default async function BlogIndexPage({
   const { posts, total } = await listPublished(p, BLOG_PER_PAGE);
   const totalPages = Math.max(1, Math.ceil(total / BLOG_PER_PAGE));
 
+  // Featured lead only on page 1; deeper pages are a plain grid.
+  const { featured, rest } =
+    p === 1
+      ? splitFeatured(posts)
+      : { featured: null as BlogPostListRow | null, rest: posts };
+
+  const featuredHero = featured ? heroUrlFor(featured) : null;
+
   return (
     <BlogShell>
       <BlogIndexJsonLd posts={posts} />
-      <div
-        style={{
-          maxWidth: 720,
-          margin: "0 auto",
-          padding: "64px 24px 96px",
-          color: "var(--ink)",
-        }}
-      >
-        <h1
-          style={{
-            fontSize: 28,
-            fontWeight: 600,
-            margin: "0 0 8px",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          Blog
-        </h1>
-        <p
-          style={{
-            fontSize: 15,
-            lineHeight: 1.7,
-            color: "var(--ink-faint)",
-            margin: "0 0 48px",
-          }}
-        >
-          {DESCRIPTION}
-        </p>
+      <div className="blog-index">
+        <header className="bi-head">
+          <p className="bi-kick">The Sepio Journal</p>
+          <h1>Blog</h1>
+          <p>{DESCRIPTION}</p>
+        </header>
 
         {posts.length === 0 ? (
           <p style={{ color: "var(--ink-faint)", fontSize: 15 }}>
             No posts yet.
           </p>
         ) : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {posts.map((post) => {
-              const date = formatDate(post.published_at);
-              return (
-                <li
-                  key={post.slug}
-                  style={{
-                    padding: "24px 0",
-                    borderBottom: "1px solid var(--border-subtle)",
-                  }}
-                >
-                  <Link
-                    href={`/blog/${post.slug}`}
-                    style={{
-                      display: "block",
-                      fontSize: 19,
-                      fontWeight: 600,
-                      letterSpacing: "-0.005em",
-                      color: "var(--ink)",
-                      textDecoration: "none",
-                      marginBottom: 6,
-                    }}
-                  >
-                    {post.title}
-                  </Link>
-                  {date && (
-                    <p
-                      style={{
-                        fontSize: 13,
-                        color: "var(--ink-faint)",
-                        margin: "0 0 8px",
-                      }}
-                    >
-                      {post.author_name ? `${post.author_name} · ` : ""}
-                      <time dateTime={post.published_at ?? undefined}>
-                        {date}
-                      </time>
-                    </p>
+          <>
+            {featured && (
+              <Link className="bi-lead" href={`/blog/${featured.slug}`}>
+                {featuredHero && (
+                  <span className="bi-lead-ph">
+                    <img src={featuredHero} alt="" />
+                  </span>
+                )}
+                <div>
+                  <h2>{featured.title}</h2>
+                  {featured.description && (
+                    <p className="bi-dek">{featured.description}</p>
                   )}
-                  {post.description && (
-                    <p
-                      style={{
-                        fontSize: 15,
-                        lineHeight: 1.6,
-                        color: "var(--ink-muted, var(--ink))",
-                        margin: 0,
-                      }}
-                    >
-                      {post.description}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                  <Byline post={featured} />
+                </div>
+              </Link>
+            )}
+
+            {rest.length > 0 && (
+              <>
+                {featured && (
+                  <p className="bi-more-h">More from the journal</p>
+                )}
+                <div className="bi-grid">
+                  {rest.map((post) => (
+                    <Card key={post.slug} post={post} />
+                  ))}
+                </div>
+              </>
+            )}
+          </>
         )}
 
         {totalPages > 1 && (

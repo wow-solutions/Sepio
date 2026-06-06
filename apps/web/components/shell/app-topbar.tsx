@@ -47,8 +47,8 @@ export function AppTopBar({
             textDecoration: "none",
           }}
         >
-          <SepioMark size={30} />
-          <Wordmark size={18} />
+          <SepioMark size={32} />
+          <Wordmark size={22} />
         </Link>
         <div style={{ width: 1, height: 18, background: "var(--border-strong)" }} />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

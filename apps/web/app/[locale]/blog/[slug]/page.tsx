@@ -5,9 +5,11 @@ import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
 import { localizedUrl } from "@/lib/seo";
 import { getPublishedBySlug } from "@/lib/blog";
+import { extractHeroImage } from "@/lib/blog-render";
 import { BlogBody } from "@/components/blog/blog-body";
 import { BlogShell } from "../shell";
 import { BlogPostJsonLd } from "../_components/blog-jsonld";
+import "../blog.css";
 
 type Params = Promise<{ locale: string; slug: string }>;
 
@@ -71,45 +73,50 @@ export default async function BlogPostPage({ params }: { params: Params }) {
   if (!post) notFound();
 
   const date = formatDate(post.published_at);
+  const { heroUrl, body } = extractHeroImage(post);
+  const words = body.trim().split(/\s+/).filter(Boolean).length;
+  const readMinutes = Math.max(1, Math.round(words / 200));
 
   return (
     <BlogShell>
       <BlogPostJsonLd post={post} />
-      <article
-        style={{
-          maxWidth: 720,
-          margin: "0 auto",
-          padding: "64px 24px 96px",
-          color: "var(--ink)",
-          fontSize: 15,
-          lineHeight: 1.7,
-        }}
-        className="prose"
-      >
-        <h1>{post.title}</h1>
-        {(post.author_name || date) && (
-          <p
-            style={{
-              fontSize: 13,
-              color: "var(--ink-faint)",
-              margin: "0 0 32px",
-            }}
-          >
-            {post.author_name && post.author_slug ? (
-              <Link
-                href={`/authors/${post.author_slug}`}
-                style={{ color: "var(--ink-faint)" }}
-              >
-                {post.author_name}
-              </Link>
-            ) : (
-              post.author_name
-            )}
-            {post.author_name && date ? " · " : ""}
-            {date && <time dateTime={post.published_at ?? undefined}>{date}</time>}
-          </p>
+      <article className="blog-article">
+        <p className="ba-eyebrow">Field notes</p>
+        <h1 className="ba-headline">{post.title}</h1>
+        {post.description && (
+          <p className="ba-standfirst">{post.description}</p>
         )}
-        <BlogBody source={post.body} />
+        <div className="ba-meta">
+          <span className="ba-dot" aria-hidden="true" />
+          {post.author_name && (
+            <span>
+              By{" "}
+              {post.author_slug ? (
+                <Link href={`/authors/${post.author_slug}`}>
+                  <b>{post.author_name}</b>
+                </Link>
+              ) : (
+                <b>{post.author_name}</b>
+              )}
+            </span>
+          )}
+          {post.author_name && date && <span>·</span>}
+          {date && (
+            <time dateTime={post.published_at ?? undefined}>{date}</time>
+          )}
+          {(post.author_name || date) && <span>·</span>}
+          <span>{readMinutes} min read</span>
+        </div>
+
+        {heroUrl && (
+          <figure className="ba-hero">
+            <img src={heroUrl} alt="" loading="lazy" />
+          </figure>
+        )}
+
+        <div className="ba-body">
+          <BlogBody source={body} />
+        </div>
       </article>
     </BlogShell>
   );

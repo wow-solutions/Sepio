@@ -219,7 +219,7 @@ export function AuthSplit({
               textDecoration: "none",
             }}
           >
-            <SepioMark size={36} />
+            <SepioMark size={32} />
             <Wordmark size={22} />
           </Link>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>

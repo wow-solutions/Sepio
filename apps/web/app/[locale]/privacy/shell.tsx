@@ -25,8 +25,8 @@ export function LegalShell({ children }: { children: React.ReactNode }) {
             color: "var(--ink)",
           }}
         >
-          <SepioMark size={28} />
-          <Wordmark size={17} />
+          <SepioMark size={32} />
+          <Wordmark size={22} />
         </Link>
       </header>
 
