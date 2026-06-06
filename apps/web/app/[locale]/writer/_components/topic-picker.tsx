@@ -385,10 +385,12 @@ function TopicCard({
   );
 }
 
-// Source URL for the "view source" link — only web_search topics carry a
-// crawlable source_url, and only http(s) is rendered.
+// Source URL for the "view source" link. Any card may carry a verified
+// source_url now (web_search natively or via source-resolution's DataForSEO SERP
+// fallback; trends via SERP). source-resolution only sets it after a
+// reachability check, so a present http(s) URL is safe to show. voc_history
+// carries none by design.
 function sourceUrlFor(topic: Topic): string | null {
-  if (topic.source !== "web_search") return null;
   const meta = topic.source_metadata;
   if (!meta || typeof meta !== "object") return null;
   const url = (meta as Record<string, unknown>).source_url;
