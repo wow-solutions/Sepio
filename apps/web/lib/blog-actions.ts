@@ -13,6 +13,8 @@ import {
 } from "@/lib/_private/blog-article";
 import { getAuthor } from "@/lib/authors";
 import { generateBlogArticle, ClaudeError, type BrandConfigRow } from "@/lib/claude";
+import { researchBlogKeywords } from "@/lib/_private/blog-keyword-research";
+import type { KeywordIdea } from "@/lib/_private/dataforseo-keywords";
 
 // blog_posts isn't in database.types.ts yet (types weren't regenerated after
 // PR1 — fast-follow). The typed client narrows .from() to the known-table union
@@ -330,7 +332,16 @@ const GenerateDraftSchema = z.object({
 });
 
 export type GenerateDraftResult =
-  | { ok: true; markdown: string; description: string | null }
+  | {
+      ok: true;
+      markdown: string;
+      description: string | null;
+      // Real-search-demand keywords the article was targeted at (blog-DataForSEO).
+      // Empty + degraded=true when keyword research was unavailable — generation
+      // still succeeds, just without SEO targeting.
+      keywordsUsed: KeywordIdea[];
+      degraded: boolean;
+    }
   | { ok: false; error: string };
 
 export async function generateBlogDraft(input: {
@@ -356,13 +367,25 @@ export async function generateBlogDraft(input: {
   if (cfgErr) return { ok: false, error: cfgErr.message };
   if (!cfg) return { ok: false, error: "Blog brand voice config not found" };
 
+  // Research real search demand for the brief's topic, then target the article
+  // at it. Never blocks generation — researchBlogKeywords degrades to [] on any
+  // failure (missing seeds, DataForSEO down) and we generate untargeted.
+  const research = await researchBlogKeywords(parsed.data.brief, {
+    cacheClient: service,
+  });
+
   try {
-    const result = await generateBlogArticle(
-      cfg as BrandConfigRow,
-      parsed.data.brief,
-    );
+    const result = await generateBlogArticle(cfg as BrandConfigRow, parsed.data.brief, {
+      keywords: research.keywords,
+    });
     const { body, description } = parseBlogArticleOutput(result.text);
-    return { ok: true, markdown: body, description };
+    return {
+      ok: true,
+      markdown: body,
+      description,
+      keywordsUsed: research.keywords,
+      degraded: research.degraded,
+    };
   } catch (e) {
     const msg = e instanceof ClaudeError ? e.message : "Generation failed";
     return { ok: false, error: msg };

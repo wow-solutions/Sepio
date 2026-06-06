@@ -13,6 +13,15 @@ import { FirewallModal, type FirewallItemView } from "./firewall-modal";
 
 type Mode = "write" | "preview";
 
+// Read-only shape for displaying the keywords a generation targeted. Structurally
+// matches the server action's KeywordIdea so no _private import is needed here.
+type KeywordRow = {
+  keyword: string;
+  search_volume: number | null;
+  keyword_difficulty: number | null;
+  main_intent: string | null;
+};
+
 export type BlogEditorInitial = {
   title: string;
   slug: string;
@@ -68,6 +77,9 @@ export function BlogEditor({
   // Article generation: a brief (any language) → English Markdown draft.
   const [brief, setBrief] = useState("");
   const [generating, setGenerating] = useState(false);
+  // Real-search-demand keywords the last generation targeted (read-only display).
+  // Structural type — avoids importing from _private into this public-path file.
+  const [keywordsUsed, setKeywordsUsed] = useState<KeywordRow[]>([]);
 
   const isPublished = status === "published";
 
@@ -88,8 +100,18 @@ export function BlogEditor({
     if (result.ok) {
       setBody(result.markdown);
       if (result.description) setDescription(result.description);
+      setKeywordsUsed(result.keywordsUsed);
       setMode("write");
-      setNotice("Draft generated — review and edit before publishing");
+      // Notice tracks what the panel actually shows (the keyword count), so the
+      // two can never contradict each other.
+      const n = result.keywordsUsed.length;
+      setNotice(
+        n === 0
+          ? "Draft generated — real-search keywords were unavailable, so it is NOT SEO-targeted. Review before publishing."
+          : `Draft generated and targeted at ${n} real search ${
+              n === 1 ? "query" : "queries"
+            } — review before publishing.`,
+      );
     } else {
       setErr(result.error);
     }
@@ -374,6 +396,44 @@ export function BlogEditor({
             review before publishing.
           </span>
         </div>
+
+        {keywordsUsed.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginBottom: 4 }}>
+              Targeted real search queries (volume / difficulty):
+            </div>
+            <ul
+              style={{
+                listStyle: "none",
+                margin: 0,
+                padding: 0,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+              }}
+            >
+              {keywordsUsed.map((k, i) => (
+                <li
+                  key={`${k.keyword}:${i}`}
+                  style={{
+                    fontSize: 11.5,
+                    color: "var(--ink)",
+                    background: "var(--surface-2, rgba(0,0,0,0.04))",
+                    borderRadius: 6,
+                    padding: "2px 8px",
+                  }}
+                  title={k.main_intent ? `intent: ${k.main_intent}` : undefined}
+                >
+                  {k.keyword}
+                  <span style={{ color: "var(--ink-faint)" }}>
+                    {" "}
+                    ({k.search_volume ?? "n/a"} / {k.keyword_difficulty ?? "n/a"})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </details>
 
       {/* Write | Preview toggle */}

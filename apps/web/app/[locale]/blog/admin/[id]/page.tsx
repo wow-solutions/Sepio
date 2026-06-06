@@ -6,9 +6,11 @@ import { firewallChecklistView } from "@/lib/_private/blog-firewall";
 import { BlogShell } from "../../shell";
 import { BlogEditor, type BlogEditorInitial } from "../_components/blog-editor";
 
-// Long-form article generation (generateBlogDraft server action) runs Sonnet
-// for ~20-60s. Raise the function ceiling so the action isn't cut off.
-export const maxDuration = 90;
+// Long-form article generation (generateBlogDraft server action) now chains
+// Haiku seed extraction + DataForSEO keyword research (each with its own
+// timeout) before the ~20-60s Sonnet write. Raise the function ceiling so the
+// added research stages can't push it over the limit. Vercel Pro allows ≤300s.
+export const maxDuration = 120;
 
 type PageProps = {
   params: Promise<{ id: string }>;

@@ -7,6 +7,7 @@ import {
   type GenFormat,
 } from "./_private/format-specs";
 import { buildBlogArticleUserText } from "./_private/blog-article";
+import type { KeywordIdea } from "./_private/dataforseo-keywords";
 
 // Per-format draft generation. Two cached system blocks:
 //   1. Brand context (voice, VOC, samples) — stable per brand, so one topic
@@ -225,11 +226,11 @@ export async function generatePostFromUserMessage(
 export async function generateBlogArticle(
   config: BrandConfigRow,
   brief: string,
-  opts?: GenerateOptions,
+  opts?: GenerateOptions & { keywords?: KeywordIdea[] },
 ): Promise<GenerateResult> {
   const b = brief.trim();
   if (!b) throw new ClaudeError("brief is empty");
-  return callClaude(config, "en", buildBlogArticleUserText(b), "blog", opts);
+  return callClaude(config, "en", buildBlogArticleUserText(b, opts?.keywords), "blog", opts);
 }
 
 // Editorial Memory (T3): rewrite an existing post per a natural-language
