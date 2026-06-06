@@ -92,6 +92,49 @@ describe("buildBrandContext", () => {
   });
 });
 
+describe("buildBrandContext — output language", () => {
+  test("instructs the brand's language (en) and not the old wording", () => {
+    const ctx = buildBrandContext(fixtureConfig(), "en");
+    expect(ctx).toContain("Write the ENTIRE output in English");
+    expect(ctx).not.toContain("Write in en,");
+  });
+
+  test("maps es/ru/pt to language names", () => {
+    expect(buildBrandContext(fixtureConfig(), "es")).toContain(
+      "Write the ENTIRE output in Spanish",
+    );
+    expect(buildBrandContext(fixtureConfig(), "ru")).toContain(
+      "Write the ENTIRE output in Russian",
+    );
+    expect(buildBrandContext(fixtureConfig(), "pt")).toContain(
+      "Write the ENTIRE output in Portuguese",
+    );
+  });
+
+  test("forbids mirroring the input language (drift guard)", () => {
+    const ctx = buildBrandContext(fixtureConfig(), "en");
+    expect(ctx).toContain("Never switch to or mirror the input language");
+  });
+
+  test("language instruction precedes the output-only instruction", () => {
+    const ctx = buildBrandContext(fixtureConfig(), "en");
+    const lang = ctx.indexOf("Write the ENTIRE output");
+    const outputOnly = ctx.indexOf("Output ONLY the content itself");
+    expect(lang).toBeGreaterThanOrEqual(0);
+    expect(outputOnly).toBeGreaterThan(lang);
+  });
+
+  test("empty primary_language falls back to English", () => {
+    const ctx = buildBrandContext(fixtureConfig(), "");
+    expect(ctx).toContain("Write the ENTIRE output in English");
+  });
+
+  test("unknown ISO code falls through to the code itself", () => {
+    const ctx = buildBrandContext(fixtureConfig(), "de");
+    expect(ctx).toContain("Write the ENTIRE output in de,");
+  });
+});
+
 describe("buildBrandContext — context injection seam (T4)", () => {
   test("no extraContext leaves output identical to two-arg call", () => {
     const withDefault = buildBrandContext(fixtureConfig(), "en");

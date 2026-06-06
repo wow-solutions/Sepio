@@ -1,4 +1,4 @@
-// GET /api/brands/[brandId]/topics — return top-5 unused candidates для /writer UI.
+// GET /api/brands/[brandId]/topics — return top-6 unused candidates для /writer UI.
 //
 // Auth: standard Supabase session. RLS на topic_candidates ограничивает чтение
 // своими брендами (через brand_id → brands.account_id).
@@ -52,7 +52,10 @@ export async function GET(
   if (!user) return jsonError({ error: "Not signed in" }, 401);
 
   // Fetch unused, unexpired candidates. RLS blocks other brands automatically.
-  // Take a generous pool (up to 20) — scorer will pick top-5 with quota.
+  // Take a generous pool (up to 60) — scorer picks top-6 with per-source quota.
+  // Order by score first (nulls last) so the 3/2/1 mix can actually be filled:
+  // a time-only window can hold <3 web_search rows when DataForSEO emits many
+  // per run, starving the quota. created_at is the tie-break (freshest first).
   const { data: pool, error } = await supabase
     .from("topic_candidates")
     .select(
@@ -61,8 +64,9 @@ export async function GET(
     .eq("brand_id", brandId)
     .is("used_at", null)
     .gt("expires_at", new Date().toISOString())
+    .order("score", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(60);
 
   if (error) {
     return jsonError({ error: error.message }, 500);

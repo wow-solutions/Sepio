@@ -82,14 +82,14 @@ export function buildBrandContext(
   primaryLanguage: string,
   extraContext: ContextBlock[] = [],
 ): string {
-  const langName = LANGUAGE_NAMES[primaryLanguage] ?? primaryLanguage;
+  const langName = LANGUAGE_NAMES[primaryLanguage] ?? (primaryLanguage || "English");
   const parts: string[] = [
     "You are a content writer for a specific brand. Write everything in the brand's voice.",
     // Language instruction is intentionally near the top — Claude follows
     // it more reliably than if it were buried. Stated explicitly so the
     // model ignores the language of the topic hint (which may be entered
     // in any language by the user).
-    `Write in ${langName}, regardless of what language the topic hint is written in.`,
+    `Write the ENTIRE output in ${langName}, regardless of the language of the topic hint, brief, or source article. Never switch to or mirror the input language.`,
     "Output ONLY the content itself. No preamble, no surrounding quotes, no 'Here is...' framing.",
     // Anti-tell: the model defaults to templated openers ("Most [people] I talk
     // to…") which read as AI-written and make a feed of posts look identical.

@@ -1,23 +1,46 @@
 // Daily topic-research dispatch — Vercel Cron entry (06:00 UTC).
 // vercel.json schedule: "0 6 * * *"
 //
-// Does two things, both fast:
+// Does two things:
 //   1. DELETE expired topic_candidates (cleanup, D13)
-//   2. Enumerate active brands + fire-and-forget fetch per-brand worker route
+//   2. Process each active brand INLINE via runBrandResearch, in parallel.
 //
-// Per-brand workers run in own Vercel function instances (own 300s timeout).
-// We use `after()` to detach the fetches from the response — dispatch returns
-// 200 quickly, workers continue in background.
+// History: the old design returned 200 instantly and fanned out to per-brand
+// worker routes inside next/server `after()`. On Vercel `after()` is bounded by
+// THIS route's maxDuration (was 60s), but the workers need ~180-260s — so the
+// fan-out was torn down before the workers inserted anything. The pool went
+// stale for days while the cron "succeeded". We now process brands inline
+// (3 active brands, each ~180-240s, run in parallel → wall ≈ slowest brand,
+// well under the 300s cap) and AWAIT real results, so a zero-insert run is
+// visible immediately instead of silently swallowed.
+//
+// SCALE CEILING: inline-parallel holds while one wave of brands fits in 300s.
+// TODO (before ~8-10 active brands): move fan-out to a durable queue (Inngest is
+// NOT currently a dependency of apps/web — adding it is real work) or per-brand
+// Vercel crons. This is deliberately a small-fleet fix.
 
-import { after } from "next/server";
+import { runBrandResearch } from "@/lib/_private/cron-worker";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
-export const maxDuration = 60; // dispatch is fast; cap to 60s
+export const maxDuration = 300; // inline processing; needs the full Pro budget
+
+// Per-brand wall budget. Brands run in parallel, so this is roughly the whole
+// run's wall time. Leaves ~50s headroom under maxDuration for cleanup + jitter.
+const PER_BRAND_BUDGET_MS = 240_000;
+
+type WorkerResult = {
+  brand_id: string;
+  ok: boolean;
+  candidates_inserted: number;
+  degraded_run: boolean;
+  error?: string;
+};
 
 type DispatchResponse = {
   expired_deleted: number;
   brands_dispatched: number;
-  brand_ids: string[];
+  total_candidates_inserted: number;
+  worker_results: WorkerResult[];
 };
 
 type ErrorBody = { error: string };
@@ -33,17 +56,6 @@ function authorize(request: Request): boolean {
   return header === `Bearer ${secret}`;
 }
 
-// Resolve our own deployment URL для fire-and-forget fetch into per-brand routes.
-// Vercel provides VERCEL_URL без protocol; we add https. Local dev uses
-// 127.0.0.1 explicitly (Node.js fetch on Mac sometimes resolves localhost
-// to IPv6 ::1 while Next.js dev binds IPv4 — causing "TypeError: fetch failed").
-function resolveBaseUrl(): string {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  return process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000";
-}
-
 // Vercel Cron uses GET по умолчанию — но we also accept POST for manual invocation.
 async function handle(request: Request): Promise<Response> {
   if (!authorize(request)) {
@@ -52,8 +64,8 @@ async function handle(request: Request): Promise<Response> {
 
   const supabase = createServiceRoleClient();
 
-  // 1) Cleanup expired candidates (cheap, fast, before fan-out so per-brand
-  //    workers see clean state).
+  // 1) Cleanup expired candidates (cheap, fast, before processing so per-brand
+  //    pool comparisons see clean state).
   const { count: deletedCount, error: deleteErr } = await supabase
     .from("topic_candidates")
     .delete({ count: "exact" })
@@ -76,32 +88,66 @@ async function handle(request: Request): Promise<Response> {
   }
 
   const brandIds = (brands ?? []).map((b) => b.id);
-  const baseUrl = resolveBaseUrl();
-  const secret = process.env.CRON_SECRET!;
 
-  // 3) Fire-and-forget fan-out via after() — each fetch invokes per-brand worker
-  //    в own Vercel function instance. We don't wait for completion (would
-  //    serialize them and blow dispatch's timeout).
-  if (brandIds.length > 0) {
-    after(async () => {
-      const fetches = brandIds.map((id) =>
-        fetch(`${baseUrl}/api/cron/research-topics/${id}`, {
-          method: "POST",
-          headers: { authorization: `Bearer ${secret}` },
-        }).catch((err) => {
-          // Per-brand fetch failure: log + continue. Worker может также fail
-          // internally (degraded_run handled there).
-          console.error(`[cron-dispatch] fan-out fetch failed for ${id}:`, err);
-        }),
+  // 3) Process all brands inline, in parallel. allSettled so one brand's failure
+  //    doesn't sink the others; we attribute per-brand outcomes in the response.
+  const worker_results: WorkerResult[] = await Promise.all(
+    brandIds.map(async (brand_id): Promise<WorkerResult> => {
+      try {
+        const r = await runBrandResearch(supabase, brand_id, {
+          deadlineMs: PER_BRAND_BUDGET_MS,
+          signal: AbortSignal.timeout(PER_BRAND_BUDGET_MS),
+        });
+        return {
+          brand_id,
+          ok: true,
+          candidates_inserted: r.candidates_inserted,
+          degraded_run: r.degraded_run,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[cron-dispatch] brand ${brand_id} failed:`, err);
+        return {
+          brand_id,
+          ok: false,
+          candidates_inserted: 0,
+          degraded_run: true,
+          error: msg,
+        };
+      }
+    }),
+  );
+
+  const total_candidates_inserted = worker_results.reduce(
+    (sum, r) => sum + r.candidates_inserted,
+    0,
+  );
+
+  // Zero-insert / degraded alarm — the failure shape that hid for 3 days was a
+  // run that "succeeds" with 0 candidates. Make it loud (Sentry picks up
+  // console.error in prod).
+  if (brandIds.length > 0 && total_candidates_inserted === 0) {
+    console.error(
+      "[cron-dispatch] ZERO INSERT across all brands",
+      JSON.stringify(worker_results),
+    );
+  } else {
+    const broken = worker_results.filter(
+      (r) => !r.ok || (r.degraded_run && r.candidates_inserted === 0),
+    );
+    if (broken.length > 0) {
+      console.error(
+        "[cron-dispatch] brands with no fresh candidates:",
+        JSON.stringify(broken),
       );
-      await Promise.allSettled(fetches);
-    });
+    }
   }
 
   const body: DispatchResponse = {
     expired_deleted: deletedCount ?? 0,
     brands_dispatched: brandIds.length,
-    brand_ids: brandIds,
+    total_candidates_inserted,
+    worker_results,
   };
 
   return Response.json(body);
