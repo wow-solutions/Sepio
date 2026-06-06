@@ -89,7 +89,7 @@ export default async function HomePage({
   const prices = ["$24", "$89", "$240"];
   const footerHrefs: string[][] = [
     ["#how", "#features", "#platforms", "#pricing"],
-    ["#", "#", "#", "#"],
+    ["#", "/blog", "#", "#"], // Company → Blog (label[1][1]) now links to the public blog
     ["#", "#", "#", "#"],
     ["/privacy", "/terms", "#", "#"],
   ];
@@ -114,6 +114,7 @@ export default async function HomePage({
             <a href="#features">{C.nav.features}</a>
             <a href="#pricing">{C.nav.pricing}</a>
             <a href="#faq">{C.nav.faq}</a>
+            <Link href="/blog">{C.nav.blog}</Link>
           </nav>
           <div className="nav-cta">
             <LandingLangToggle />

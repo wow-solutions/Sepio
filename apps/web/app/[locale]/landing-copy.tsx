@@ -10,7 +10,7 @@ import type { Locale } from "@/i18n/routing";
 const em = (s: ReactNode) => <em>{s}</em>;
 
 export type LandingCopy = {
-  nav: { howItWorks: string; platforms: string; features: string; pricing: string; faq: string; signIn: string; startFree: string };
+  nav: { howItWorks: string; platforms: string; features: string; pricing: string; faq: string; blog: string; signIn: string; startFree: string };
   hero: { eyebrow: string; h1: ReactNode; lede: ReactNode; startFree: string; seeHow: string; tagLive: string; tag6: string; tagSchedule: string; tagNoCard: string };
   logosHeading: string;
   how: {
@@ -39,7 +39,7 @@ export type LandingCopy = {
 };
 
 const en: LandingCopy = {
-  nav: { howItWorks: "How it works", platforms: "Platforms", features: "Features", pricing: "Pricing", faq: "FAQ", signIn: "Sign in", startFree: "Start free" },
+  nav: { howItWorks: "How it works", platforms: "Platforms", features: "Features", pricing: "Pricing", faq: "FAQ", blog: "Blog", signIn: "Sign in", startFree: "Start free" },
   hero: {
     eyebrow: "Now in beta · for marketing operators",
     h1: <>One brand.<br />{em("Every")} feed.</>,
@@ -133,7 +133,7 @@ const en: LandingCopy = {
 };
 
 const es: LandingCopy = {
-  nav: { howItWorks: "Cómo funciona", platforms: "Plataformas", features: "Funciones", pricing: "Precios", faq: "FAQ", signIn: "Iniciar sesión", startFree: "Empezar gratis" },
+  nav: { howItWorks: "Cómo funciona", platforms: "Plataformas", features: "Funciones", pricing: "Precios", faq: "FAQ", blog: "Blog", signIn: "Iniciar sesión", startFree: "Empezar gratis" },
   hero: {
     eyebrow: "Ahora en beta · para operadores de marketing",
     h1: <>Una marca.<br />{em("Cada")} feed.</>,
@@ -227,7 +227,7 @@ const es: LandingCopy = {
 };
 
 const ru: LandingCopy = {
-  nav: { howItWorks: "Как работает", platforms: "Платформы", features: "Возможности", pricing: "Цены", faq: "Вопросы", signIn: "Войти", startFree: "Начать бесплатно" },
+  nav: { howItWorks: "Как работает", platforms: "Платформы", features: "Возможности", pricing: "Цены", faq: "Вопросы", blog: "Блог", signIn: "Войти", startFree: "Начать бесплатно" },
   hero: {
     eyebrow: "Сейчас в бете · для маркетинг-операторов",
     h1: <>Один бренд.<br />{em("Каждая")} лента.</>,
