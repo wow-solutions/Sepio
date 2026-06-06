@@ -3,34 +3,38 @@
 //
 // Does two things:
 //   1. DELETE expired topic_candidates (cleanup, D13)
-//   2. Process each active brand INLINE via runBrandResearch, in parallel.
+//   2. Fan out ONE function invocation per brand (await the results)
 //
-// History: the old design returned 200 instantly and fanned out to per-brand
-// worker routes inside next/server `after()`. On Vercel `after()` is bounded by
-// THIS route's maxDuration (was 60s), but the workers need ~180-260s — so the
-// fan-out was torn down before the workers inserted anything. The pool went
-// stale for days while the cron "succeeded". We now process brands inline
-// (3 active brands, each ~180-240s, run in parallel → wall ≈ slowest brand,
-// well under the 300s cap) and AWAIT real results, so a zero-insert run is
-// visible immediately instead of silently swallowed.
+// Why fan-out (not inline): running all brands inside THIS one function starved
+// each other — 3 concurrent web_search streams in a single lambda pushed each
+// past its 240s abort, so nothing was generated (observed: only voc cards,
+// tagged "deadline"). Each brand now runs in its OWN worker function
+// (/api/cron/research-topics/[brandId]) with its own CPU + full 240s source
+// budget. We AWAIT the fan-out (no next/server `after()`, whose lifetime was
+// capped by maxDuration and silently dropped the workers for days).
 //
-// SCALE CEILING: inline-parallel holds while one wave of brands fits in 300s.
-// TODO (before ~8-10 active brands): move fan-out to a durable queue (Inngest is
-// NOT currently a dependency of apps/web — adding it is real work) or per-brand
-// Vercel crons. This is deliberately a small-fleet fix.
+// Self-call uses the canonical prod domain (SITE_URL), NOT VERCEL_URL — the
+// deployment-specific host sits behind Deployment Protection and would 401 the
+// internal fetch.
+//
+// SCALE CEILING: dispatch awaits all workers, so its wall ≈ slowest worker
+// (~240s) regardless of brand count, BUT Vercel subrequest/concurrency limits
+// make this unsafe well before ~100 brands. TODO: durable queue (Inngest is NOT
+// yet an apps/web dependency) or per-brand Vercel crons before the fleet grows.
 
-import { runBrandResearch } from "@/lib/_private/cron-worker";
+import { SITE_URL } from "@/lib/seo";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
-export const maxDuration = 300; // inline processing; needs the full Pro budget
+export const maxDuration = 300; // awaits per-brand workers; needs full Pro budget
 
-// Per-brand wall budget. Brands run in parallel, so this is roughly the whole
-// run's wall time. Leaves ~50s headroom under maxDuration for cleanup + jitter.
-const PER_BRAND_BUDGET_MS = 240_000;
+// Bound each worker fetch below dispatch's own 300s cap so one hung worker can't
+// pin dispatch to its death.
+const WORKER_FETCH_TIMEOUT_MS = 290_000;
 
 type WorkerResult = {
   brand_id: string;
   ok: boolean;
+  status: number;
   candidates_inserted: number;
   degraded_run: boolean;
   error?: string;
@@ -56,6 +60,14 @@ function authorize(request: Request): boolean {
   return header === `Bearer ${secret}`;
 }
 
+// Base URL for the internal self-fetch into per-brand worker routes. On Vercel
+// use the canonical production domain (exempt from Deployment Protection); local
+// dev hits the dev server.
+function resolveBaseUrl(): string {
+  if (process.env.VERCEL) return SITE_URL;
+  return process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000";
+}
+
 // Vercel Cron uses GET по умолчанию — но we also accept POST for manual invocation.
 async function handle(request: Request): Promise<Response> {
   if (!authorize(request)) {
@@ -64,7 +76,7 @@ async function handle(request: Request): Promise<Response> {
 
   const supabase = createServiceRoleClient();
 
-  // 1) Cleanup expired candidates (cheap, fast, before processing so per-brand
+  // 1) Cleanup expired candidates (cheap, fast, before fan-out so per-brand
   //    pool comparisons see clean state).
   const { count: deletedCount, error: deleteErr } = await supabase
     .from("topic_candidates")
@@ -88,28 +100,43 @@ async function handle(request: Request): Promise<Response> {
   }
 
   const brandIds = (brands ?? []).map((b) => b.id);
+  const baseUrl = resolveBaseUrl();
+  const secret = process.env.CRON_SECRET!;
 
-  // 3) Process all brands inline, in parallel. allSettled so one brand's failure
-  //    doesn't sink the others; we attribute per-brand outcomes in the response.
+  // 3) Fan out one worker function per brand and AWAIT all. allSettled-style via
+  //    per-brand try/catch so one brand's failure doesn't sink the others.
   const worker_results: WorkerResult[] = await Promise.all(
     brandIds.map(async (brand_id): Promise<WorkerResult> => {
       try {
-        const r = await runBrandResearch(supabase, brand_id, {
-          deadlineMs: PER_BRAND_BUDGET_MS,
-          signal: AbortSignal.timeout(PER_BRAND_BUDGET_MS),
-        });
+        const res = await fetch(
+          `${baseUrl}/api/cron/research-topics/${brand_id}`,
+          {
+            method: "POST",
+            headers: { authorization: `Bearer ${secret}` },
+            signal: AbortSignal.timeout(WORKER_FETCH_TIMEOUT_MS),
+          },
+        );
+        const body: unknown = await res.json().catch(() => ({}));
+        const b = (body ?? {}) as {
+          candidates_inserted?: number;
+          degraded_run?: boolean;
+          error?: string;
+        };
         return {
           brand_id,
-          ok: true,
-          candidates_inserted: r.candidates_inserted,
-          degraded_run: r.degraded_run,
+          ok: res.ok,
+          status: res.status,
+          candidates_inserted: b.candidates_inserted ?? 0,
+          degraded_run: b.degraded_run ?? !res.ok,
+          error: res.ok ? undefined : (b.error ?? `HTTP ${res.status}`),
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[cron-dispatch] brand ${brand_id} failed:`, err);
+        console.error(`[cron-dispatch] fan-out failed for ${brand_id}:`, err);
         return {
           brand_id,
           ok: false,
+          status: 0,
           candidates_inserted: 0,
           degraded_run: true,
           error: msg,
