@@ -14,7 +14,8 @@ export const maxDuration = 300; // 5 min, Vercel Pro
 // At the deadline, slow sources abort and the worker still inserts whatever the
 // fast sources (dataforseo, voc) produced. This is a background cron (fire-and-
 // forget from dispatch), so the wall-time only matters vs the function cap.
-const SOURCE_BUDGET_MS = 240_000; // 4 min, leaves ~60s for insert + overhead
+const SOURCE_BUDGET_MS = 250_000; // leaves ~50s under maxDuration; web_search is
+// separately capped (WEB_SEARCH_TIMEOUT_MS) so source resolution keeps ~65s.
 
 type ErrorBody = { error: string; brand_id?: string };
 
