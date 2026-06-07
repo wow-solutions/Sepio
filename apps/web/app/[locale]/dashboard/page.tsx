@@ -6,7 +6,6 @@ import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
-import { signout } from "./actions";
 
 type PageProps = {
   searchParams: Promise<{ brand?: string }>;
@@ -144,24 +143,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             </p>
           </div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <form action={signout}>
-              <button
-                type="submit"
-                style={{
-                  height: 36,
-                  padding: "0 14px",
-                  background: "transparent",
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: 9999,
-                  color: "var(--ink-muted)",
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                {t("signOut")}
-              </button>
-            </form>
             <Link
               href="/brands/new"
               style={{

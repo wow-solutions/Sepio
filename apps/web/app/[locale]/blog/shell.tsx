@@ -1,19 +1,31 @@
 import { Link } from "@/i18n/navigation";
 import { SepioMark } from "@/components/shell/sepio-mark";
 import { Wordmark } from "@/components/shell/wordmark";
+import { BlogNameplate } from "./_components/blog-nameplate";
 
 // Public chassis for the blog (forked from the legal/privacy LegalShell). Thin
-// header (home mark + wordmark) and a footer — no rail/topbar/AppShell.
-export function BlogShell({ children }: { children: React.ReactNode }) {
+// header: Sepio brand lockup (links home) on the left, the journal nameplate
+// (The Sepio Journal / Blog) on the right so the blog identity is consistent on
+// every blog surface. No rail/topbar/AppShell.
+export function BlogShell({
+  children,
+  // The index already carries the full "The Sepio Journal / Blog" masthead in
+  // its body, so it suppresses the compact header nameplate to avoid showing
+  // the same lockup twice. Every other blog surface keeps it.
+  hideNameplate = false,
+}: {
+  children: React.ReactNode;
+  hideNameplate?: boolean;
+}) {
   return (
     <main style={{ background: "var(--bg)", color: "var(--ink)" }}>
       <header
         style={{
-          height: "var(--shell-topbar-h)",
+          minHeight: 66,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 24px",
+          padding: "12px 24px",
           borderBottom: "1px solid var(--border-subtle)",
         }}
       >
@@ -30,16 +42,7 @@ export function BlogShell({ children }: { children: React.ReactNode }) {
           <SepioMark size={32} />
           <Wordmark size={22} />
         </Link>
-        <Link
-          href="/blog"
-          style={{
-            fontSize: 14,
-            color: "var(--ink-faint)",
-            textDecoration: "none",
-          }}
-        >
-          Blog
-        </Link>
+        {hideNameplate ? <span /> : <BlogNameplate />}
       </header>
 
       {children}

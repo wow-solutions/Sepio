@@ -73,7 +73,7 @@ export default async function WriterPage({ searchParams }: PageProps) {
       currentBrandId={brand.id}
       breadcrumb={`${t("breadcrumb")} · ${brand.name}`}
       userInitials={userInitials}
-      newPostHref={`/writer?brand=${brand.id}`}
+      newPostHref={null}
       planTier={account?.plan_tier ?? null}
       planStatus={account?.plan_status ?? null}
       trialEndsAt={account?.trial_ends_at ?? null}

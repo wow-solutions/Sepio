@@ -1,6 +1,7 @@
 import { Link } from "@/i18n/navigation";
 import { SepioMark } from "./sepio-mark";
 import { Wordmark } from "./wordmark";
+import { BlogWordmark } from "./blog-wordmark";
 import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
 
 // Editorial two-column auth layout from the app handoff 2026-05-24
@@ -185,11 +186,16 @@ export function AuthSplit({
   rightPane,
   footer,
   children,
+  // When set, the top-right shows the Blog wordmark (sibling to the Sepio
+  // wordmark) next to the locale switcher instead of the screen-label text.
+  // Used on /login.
+  blogNav = false,
 }: {
   screenLabel: string;
   rightPane: React.ReactNode;
-  footer: { copyright: string; terms: string; privacy: string };
+  footer: { copyright: string; terms: string; privacy: string; blog?: string };
   children: React.ReactNode;
+  blogNav?: boolean;
 }) {
   return (
     <main className="auth-split">
@@ -222,18 +228,22 @@ export function AuthSplit({
             <SepioMark size={32} />
             <Wordmark size={22} />
           </Link>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <span
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 11,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                color: "var(--ink-faint)",
-              }}
-            >
-              {screenLabel}
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            {blogNav ? (
+              <BlogWordmark size={22} />
+            ) : (
+              <span
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--ink-faint)",
+                }}
+              >
+                {screenLabel}
+              </span>
+            )}
             <LocaleSwitcher />
           </div>
         </div>
@@ -269,6 +279,11 @@ export function AuthSplit({
         >
           <span>{footer.copyright}</span>
           <span style={{ display: "flex", gap: 18 }}>
+            {footer.blog && (
+              <Link href="/blog" style={{ color: "inherit", textDecoration: "none" }}>
+                {footer.blog}
+              </Link>
+            )}
             <Link href="/terms" style={{ color: "inherit", textDecoration: "none" }}>
               {footer.terms}
             </Link>

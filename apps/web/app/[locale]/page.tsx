@@ -3,6 +3,7 @@ import type { Metadata, Route } from "next";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { LandingLangToggle } from "@/components/shell/landing-lang-toggle";
+import { BlogWordmark } from "@/components/shell/blog-wordmark";
 import type { Locale } from "@/i18n/routing";
 import { alternatesFor, localizedUrl } from "@/lib/seo";
 import { landingCopy } from "./landing-copy";
@@ -114,7 +115,7 @@ export default async function HomePage({
             <a href="#features">{C.nav.features}</a>
             <a href="#pricing">{C.nav.pricing}</a>
             <a href="#faq">{C.nav.faq}</a>
-            <Link href="/blog">{C.nav.blog}</Link>
+            <BlogWordmark size={26} />
           </nav>
           <div className="nav-cta">
             <LandingLangToggle />

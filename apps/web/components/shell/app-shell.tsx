@@ -59,6 +59,11 @@ export async function AppShell({
         newPostHref={newPostHref}
         newPostLabel={t("newPost")}
         userInitials={userInitials}
+        accountLabels={{
+          account: t("account"),
+          changePassword: t("changePassword"),
+          signOut: t("signOut"),
+        }}
       />
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
         <CollapsibleRail

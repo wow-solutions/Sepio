@@ -44,6 +44,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
   return (
     <AuthSplit
       screenLabel={t("eyebrow")}
+      blogNav
       footer={{
         copyright: tFooter("copyright"),
         terms: tFooter("terms"),
@@ -102,7 +103,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
           />
         </div>
         <button type="submit" className="auth-btn-primary" style={{ marginTop: 6 }}>
-          {t("submit")} →
+          {t("submit")}
         </button>
       </form>
 

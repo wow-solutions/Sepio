@@ -55,7 +55,8 @@
     "footer": {
       "copyright": "© Sepio · sepio.app",
       "terms": "Terms",
-      "privacy": "Privacy"
+      "privacy": "Privacy",
+      "blog": "Blog"
     },
     "forgot": {
       "eyebrow": "Reset",
@@ -643,6 +644,9 @@
     "selectBrandHint": "Pick a brand to start writing, or add one.",
     "newPost": "New post",
     "showMenu": "Show menu",
-    "hideMenu": "Hide menu"
+    "hideMenu": "Hide menu",
+    "account": "Account",
+    "changePassword": "Change password",
+    "signOut": "Sign out"
   }
 }

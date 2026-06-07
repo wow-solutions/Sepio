@@ -55,7 +55,8 @@
     "footer": {
       "copyright": "© Sepio · sepio.app",
       "terms": "Условия",
-      "privacy": "Конфиденциальность"
+      "privacy": "Конфиденциальность",
+      "blog": "Блог"
     },
     "forgot": {
       "eyebrow": "Сброс",
@@ -643,6 +644,9 @@
     "selectBrandHint": "Выберите бренд, чтобы начать писать, или добавьте новый.",
     "newPost": "Новый пост",
     "showMenu": "Показать меню",
-    "hideMenu": "Скрыть меню"
+    "hideMenu": "Скрыть меню",
+    "account": "Аккаунт",
+    "changePassword": "Сменить пароль",
+    "signOut": "Выйти"
   }
 }

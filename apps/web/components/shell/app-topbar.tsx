@@ -2,6 +2,7 @@ import { Link } from "@/i18n/navigation";
 import { SepioMark } from "./sepio-mark";
 import { Wordmark } from "./wordmark";
 import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
+import { AccountMenu } from "./account-menu";
 
 type Props = {
   breadcrumb: string;
@@ -10,6 +11,7 @@ type Props = {
   newPostHref?: string | null;
   newPostLabel: string;
   userInitials?: string;
+  accountLabels: { account: string; changePassword: string; signOut: string };
 };
 
 // The authed app top bar — 56px, per app handoff 2026-05-24. Brand lockup +
@@ -21,6 +23,7 @@ export function AppTopBar({
   newPostHref = null,
   newPostLabel,
   userInitials = "—",
+  accountLabels,
 }: Props) {
   return (
     <header
@@ -108,26 +111,7 @@ export function AppTopBar({
             {newPostLabel}
           </Link>
         )}
-        <div
-          title="Account"
-          aria-label="Account"
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: "50%",
-            background: "var(--sepio-sepia)",
-            color: "var(--sepio-cream)",
-            display: "grid",
-            placeItems: "center",
-            fontFamily: "var(--font-fraunces), Georgia, serif",
-            fontVariationSettings: '"opsz" 36',
-            fontSize: 13,
-            fontWeight: 500,
-            border: "1px solid rgba(176,123,80,0.32)",
-          }}
-        >
-          {userInitials.slice(0, 2).toUpperCase()}
-        </div>
+        <AccountMenu userInitials={userInitials} labels={accountLabels} />
       </div>
     </header>
   );

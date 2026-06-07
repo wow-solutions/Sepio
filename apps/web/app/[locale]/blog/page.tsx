@@ -144,7 +144,7 @@ export default async function BlogIndexPage({
   const featuredHero = featured ? heroUrlFor(featured) : null;
 
   return (
-    <BlogShell>
+    <BlogShell hideNameplate>
       <BlogIndexJsonLd posts={posts} />
       <div className="blog-index">
         <header className="bi-head">
