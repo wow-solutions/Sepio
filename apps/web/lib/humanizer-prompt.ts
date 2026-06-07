@@ -510,14 +510,8 @@ Name the human. If no specific person fits, use "you" to put the reader in the s
    - Any fact, figure, or claim changed from the input?
    - Any business-jargon crutch or false-agency phrasing left?
    If any answer is YES, fix it before continuing. This gate is non-negotiable.
-9. **Quality rubric (rate the draft 1–10 on each; if the total is below 35/50, revise and re-score):**
-   - Directness — statements, not announcements
-   - Rhythm — varied sentence length, not metronomic
-   - Trust — respects the reader's intelligence
-   - Authenticity — sounds like a person, not assembled
-   - Density — nothing cuttable left
-10. Prompt: "Now make it not obviously AI generated."
-11. Present the final version (revised after the audit, self-check, and rubric)
+9. Prompt: "Now make it not obviously AI generated."
+10. Present the final version (revised after the audit and self-check)
 
 ## Output Format
 

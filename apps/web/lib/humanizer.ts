@@ -19,11 +19,11 @@ const OUTPUT_OVERRIDE = `
 
 ## OUTPUT CONTRACT (this supersedes the "Output Format" section above)
 
-Internally perform the full process (draft → "What makes this obviously AI?" audit → hard-fail self-check → quality rubric → revised final). Run the self-check and the rubric silently — they shape the final text but NEVER appear in the output. Return ONLY the revised final text as plain output. Do NOT include:
+Internally perform the full process (draft → "What makes this obviously AI?" audit → hard-fail self-check → revised final). Run the self-check silently — it shapes the final text but NEVER appears in the output. Return ONLY the revised final text as plain output. Do NOT include:
 
 - The draft version
 - The audit bullets
-- The self-check answers or the rubric scores
+- The self-check answers
 - A "Changes made" summary
 - Any section headers, labels, or commentary
 - Markdown quote blocks (> ...) wrapping the output
