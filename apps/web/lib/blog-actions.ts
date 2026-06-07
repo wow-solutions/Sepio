@@ -367,6 +367,15 @@ export async function generateBlogDraft(input: {
   if (cfgErr) return { ok: false, error: cfgErr.message };
   if (!cfg) return { ok: false, error: "Blog brand voice config not found" };
 
+  // Output language = the blog brand's primary_language (chosen at onboarding),
+  // not a hardcoded "en". Falls back to "en" if unset.
+  const { data: brandRow } = await service
+    .from("brands")
+    .select("primary_language")
+    .eq("id", BLOG_BRAND_ID)
+    .maybeSingle();
+  const language = brandRow?.primary_language || "en";
+
   // Research real search demand for the brief's topic, then target the article
   // at it. Never blocks generation — researchBlogKeywords degrades to [] on any
   // failure (missing seeds, DataForSEO down) and we generate untargeted.
@@ -375,9 +384,12 @@ export async function generateBlogDraft(input: {
   });
 
   try {
-    const result = await generateBlogArticle(cfg as BrandConfigRow, parsed.data.brief, {
-      keywords: research.keywords,
-    });
+    const result = await generateBlogArticle(
+      cfg as BrandConfigRow,
+      language,
+      parsed.data.brief,
+      { keywords: research.keywords },
+    );
     const { body, description } = parseBlogArticleOutput(result.text);
     return {
       ok: true,

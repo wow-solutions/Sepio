@@ -248,14 +248,14 @@ describe("generateBlogArticle — guards", () => {
   test("rejects an empty brief before touching the API", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test-key-not-real";
     await expect(
-      generateBlogArticle(fixtureConfig(), "   "),
+      generateBlogArticle(fixtureConfig(), "en", "   "),
     ).rejects.toThrow(/brief is empty/);
   });
 
   test("throws ClaudeError when ANTHROPIC_API_KEY missing", async () => {
     delete process.env.ANTHROPIC_API_KEY;
     await expect(
-      generateBlogArticle(fixtureConfig(), "a real brief about HVAC humidity"),
+      generateBlogArticle(fixtureConfig(), "en", "a real brief about HVAC humidity"),
     ).rejects.toThrow(/ANTHROPIC_API_KEY/);
   });
 });

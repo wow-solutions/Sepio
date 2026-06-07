@@ -220,17 +220,25 @@ export async function generatePostFromUserMessage(
 
 // Blog-article generation (blog-PR6): a full long-form article from a brief.
 // Reuses the shared `blog` FORMAT_SPEC (Sonnet, GEO structure) and the brand
-// voice system prompt. Output language is always English — the brief may be in
-// any language (buildBrandContext's "write in English regardless of the hint
-// language" instruction handles a Russian brief → English article).
+// voice system prompt. Output language = the brand's primary_language (chosen at
+// onboarding) — buildBrandContext's "write the ENTIRE output in <lang>
+// regardless of the brief's language" instruction handles a brief written in any
+// language (e.g. a Russian brief → article in the brand's language).
 export async function generateBlogArticle(
   config: BrandConfigRow,
+  primaryLanguage: string,
   brief: string,
   opts?: GenerateOptions & { keywords?: KeywordIdea[] },
 ): Promise<GenerateResult> {
   const b = brief.trim();
   if (!b) throw new ClaudeError("brief is empty");
-  return callClaude(config, "en", buildBlogArticleUserText(b, opts?.keywords), "blog", opts);
+  return callClaude(
+    config,
+    primaryLanguage,
+    buildBlogArticleUserText(b, opts?.keywords),
+    "blog",
+    opts,
+  );
 }
 
 // Editorial Memory (T3): rewrite an existing post per a natural-language
