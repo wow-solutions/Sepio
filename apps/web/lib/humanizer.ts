@@ -19,17 +19,53 @@ const OUTPUT_OVERRIDE = `
 
 ## OUTPUT CONTRACT (this supersedes the "Output Format" section above)
 
-Internally perform the full 2-pass process (draft → "What makes this obviously AI?" audit → revised final). But return ONLY the revised final text as plain output. Do NOT include:
+Internally perform the full process (draft → "What makes this obviously AI?" audit → hard-fail self-check → quality rubric → revised final). Run the self-check and the rubric silently — they shape the final text but NEVER appear in the output. Return ONLY the revised final text as plain output. Do NOT include:
 
 - The draft version
 - The audit bullets
+- The self-check answers or the rubric scores
 - A "Changes made" summary
 - Any section headers, labels, or commentary
 - Markdown quote blocks (> ...) wrapping the output
 - Any preamble like "Here is the humanized text:"
 
+Rewrite style only — never strip substance. Keep every source URL, attribution line (\`Source: ...\`, \`Via: ...\`), citation, name, date, number, statistic, and call-to-action exactly as given. Zero em dashes in the output (Non-Negotiable #1).
+
 Just the final humanized text, ready to publish as-is. Match the input's language (English in / English out, Spanish in / Spanish out).
 `;
+
+// Deterministic safety net for the em-dash hard ban (Non-Negotiable #1). The
+// prompt instructs zero em dashes, but the model drops exhaustive mechanical
+// rules under load, so we catch any survivor here.
+//
+// Scope is deliberately narrow — this layer only does what's safe WITHOUT the
+// model's context, so it can never corrupt protected substance:
+//   • Em dash (—) is the AI tell. A sentence-break em dash becomes a comma; an
+//     em dash between two digits is a range, normalized to an en dash so the
+//     range survives ("16—20%" → "16–20%") instead of becoming a list.
+//   • En dash (–) is left completely untouched: numeric ranges ("16–20%"),
+//     minus signs ("–5"), and label ranges ("Q1–Q2", "Jan–Mar") keep their
+//     meaning. The rarer "en dash used as a sentence break" needs context to
+//     tell apart from a range, so the prompt owns it, not this blind filter.
+//
+// Known limitation: an em dash sitting literally inside a URL or code span would
+// be rewritten. In practice "—" is not URL-safe (it encodes as %E2%80%94) and
+// the humanizer targets social/marketing prose, so this never fires there.
+export function stripEmDashes(text: string): string {
+  return (
+    text
+      // Em dash between two digits = a numeric range → normalize to en dash.
+      .replace(/(\d)[ \t]*—[ \t]*(\d)/g, "$1–$2")
+      // Remaining em dashes are sentence breaks → comma. Consume horizontal
+      // whitespace hugging the dash so no stray " , " is left behind.
+      .replace(/[ \t]*—[ \t]*/g, ", ")
+      // Boundary cleanups for a dash that sat at an edge:
+      .replace(/(^|\n)[ \t]*,[ \t]*/g, "$1") // line-leading comma (dash began a line)
+      .replace(/,[ \t]*(?=[.,!?;:\n])/g, "") // comma butting against punctuation / EOL
+      .replace(/,[ \t]*,/g, ",") // consecutive dashes → one comma
+      .replace(/,[ \t]*$/g, "") // trailing comma at end of text
+  );
+}
 
 const HUMANIZER_SYSTEM = HUMANIZER_BODY + OUTPUT_OVERRIDE;
 
@@ -131,8 +167,12 @@ export async function humanizeText(
     throw new HumanizerError("Humanizer returned no text content");
   }
 
+  // Deterministic backstop: strip any em dash the model left behind, preserving
+  // numeric en-dash ranges (Non-Negotiable #1).
+  const cleaned = stripEmDashes(rewritten);
+
   return {
-    text: rewritten,
+    text: cleaned,
     usage: {
       input_tokens: response.usage.input_tokens,
       output_tokens: response.usage.output_tokens,
