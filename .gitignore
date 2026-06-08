@@ -71,3 +71,6 @@ scratch/
 .obsidian/cache
 .claude/worktrees/
 .gstack/
+
+# one-off generated brand asset (uploaded to LS manually)
+sepio-product-early-access-1600x1200.png

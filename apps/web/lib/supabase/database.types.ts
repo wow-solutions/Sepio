@@ -26,6 +26,7 @@ export type Database = {
           id: string
           lemonsqueezy_customer_id: string | null
           lemonsqueezy_subscription_id: string | null
+          lemonsqueezy_updated_at: string | null
           plan_status: string
           plan_tier: string
           posts_used_this_period: number
@@ -42,6 +43,7 @@ export type Database = {
           id: string
           lemonsqueezy_customer_id?: string | null
           lemonsqueezy_subscription_id?: string | null
+          lemonsqueezy_updated_at?: string | null
           plan_status?: string
           plan_tier?: string
           posts_used_this_period?: number
@@ -58,6 +60,7 @@ export type Database = {
           id?: string
           lemonsqueezy_customer_id?: string | null
           lemonsqueezy_subscription_id?: string | null
+          lemonsqueezy_updated_at?: string | null
           plan_status?: string
           plan_tier?: string
           posts_used_this_period?: number
@@ -1092,6 +1095,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_ls_subscription: {
+        Args: {
+          p_account_id: string
+          p_plan_tier: string
+          p_plan_status: string
+          p_period_end: string | null
+          p_customer_id: string
+          p_subscription_id: string
+          p_updated_at: string
+        }
+        Returns: string
+      }
       cache_topic_article: {
         Args: { p_candidate_id: string; p_extract: Json; p_status: string }
         Returns: undefined

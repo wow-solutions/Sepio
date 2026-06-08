@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
 import { alternatesFor, localizedUrl } from "@/lib/seo";
+import { createClient } from "@/lib/supabase/server";
+import type { PaidTier } from "@/lib/billing/config";
 import { LegalShell } from "../privacy/shell";
+import { BuyButton } from "./BuyButton";
 
 const TITLE = "Pricing — Sepio | AI Content Engine for Agencies";
 const DESCRIPTION =
@@ -30,69 +33,42 @@ export async function generateMetadata({
 
 type Plan = {
   name: string;
+  tier: PaidTier;
   price: number;
   blurb: string;
   features: string[];
   highlight?: boolean;
 };
 
+// Early access: one purchasable plan ($29) while functionality is still filling
+// out. The full agency ladder (Starter / Growth / Agency / Scale) ships later.
 const PLANS: Plan[] = [
   {
-    name: "Solo",
-    price: 49,
-    blurb: "For one brand, one consultant.",
-    features: [
-      "30 posts per month",
-      "1 brand",
-      "1 language",
-      "SVG templated images",
-      "LinkedIn + Telegram + Blog",
-      "Topic research (3 sources)",
-    ],
-  },
-  {
-    name: "Solo Pro",
-    price: 99,
+    name: "Early Access",
+    tier: "early",
+    price: 29,
     highlight: true,
-    blurb: "Adds image generation and multi-language.",
+    blurb: "Try Sepio now, at a founding price, and shape what it becomes.",
     features: [
-      "100 posts per month",
-      "1 brand",
-      "3 languages",
-      "AI image generation (5 / month)",
-      "All platforms (after rollout)",
-      "Per-platform format adapter",
-    ],
-  },
-  {
-    name: "Boutique",
-    price: 199,
-    blurb: "Manage a small portfolio of clients.",
-    features: [
-      "300 posts per month",
-      "3 brands",
-      "3 languages",
-      "AI image generation (30 / month)",
-      "All platforms (after rollout)",
-      "Carousels + Photo Mode",
-    ],
-  },
-  {
-    name: "Agency",
-    price: 399,
-    blurb: "Built for boutique agencies running multiple clients.",
-    features: [
-      "1,000 posts per month",
-      "10 brands",
-      "5 languages",
-      "AI image generation (100 / month)",
-      "All platforms (after rollout)",
-      "Priority support",
+      "Everything available today",
+      "Generate SEO & social content per brand",
+      "LinkedIn, Telegram & blog publishing",
+      "Topic research + keyword targeting",
+      "Founding price, locked while you stay",
+      "Direct line to the founder for feedback",
     ],
   },
 ];
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  // Authed users get a working "Upgrade" button (→ checkout/portal); anon
+  // visitors keep the marketing CTA to /signup (trial-first funnel).
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const isAuthed = !!user;
+
   return (
     <LegalShell>
       <section
@@ -123,9 +99,9 @@ export default function PricingPage() {
             lineHeight: 1.55,
           }}
         >
-          Drafting, scheduling, and publishing across LinkedIn, Telegram,
-          Instagram, Threads, TikTok, and your blog — in one dashboard.
-          Cancel anytime. 14-day free trial on every plan.
+          Sepio is in early access. One founding plan, one honest price —
+          come in now, use what works today, and help shape the rest.
+          Cancel anytime. 14-day free trial, no card.
         </p>
       </section>
 
@@ -136,22 +112,17 @@ export default function PricingPage() {
           padding: "24px 24px 80px",
         }}
       >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: 20,
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "center" }}>
           {PLANS.map((plan) => (
-            <PlanCard key={plan.name} plan={plan} />
+            <div key={plan.name} style={{ width: "100%", maxWidth: 360 }}>
+              <PlanCard plan={plan} isAuthed={isAuthed} />
+            </div>
           ))}
         </div>
 
         <p
           style={{
             textAlign: "center",
-            marginTop: 40,
             fontSize: 13,
             color: "var(--ink-faint)",
             maxWidth: 720,
@@ -159,17 +130,18 @@ export default function PricingPage() {
             lineHeight: 1.6,
           }}
         >
-          Every plan includes a 14-day free trial — no card required. Prices
-          billed monthly in USD via Lemon Squeezy. Instagram, Threads, and
-          TikTok publishing are rolled out as Meta and TikTok approve the
-          integration; LinkedIn, Telegram, and Blog work today.
+          Billed monthly in USD via Lemon Squeezy, cancel anytime. Full agency
+          plans (Starter, Growth, Agency, Scale) arrive as features ship — early
+          members keep their founding price. LinkedIn, Telegram, and Blog work
+          today; Instagram, Threads, and TikTok roll out as Meta and TikTok
+          approve the integration.
         </p>
       </section>
     </LegalShell>
   );
 }
 
-function PlanCard({ plan }: { plan: Plan }) {
+function PlanCard({ plan, isAuthed }: { plan: Plan; isAuthed: boolean }) {
   return (
     <div
       style={{
@@ -280,26 +252,34 @@ function PlanCard({ plan }: { plan: Plan }) {
         ))}
       </ul>
 
-      <Link
-        href="/signup"
-        style={{
-          display: "block",
-          textAlign: "center",
-          padding: "10px 16px",
-          borderRadius: 8,
-          background: plan.highlight ? "var(--ink)" : "transparent",
-          color: plan.highlight ? "var(--bg)" : "var(--ink)",
-          border: plan.highlight
-            ? "1px solid var(--ink)"
-            : "1px solid var(--border-strong)",
-          fontSize: 13,
-          fontWeight: 600,
-          textDecoration: "none",
-          marginTop: "auto",
-        }}
-      >
-        Start 14-day trial
-      </Link>
+      {isAuthed ? (
+        <BuyButton
+          tier={plan.tier}
+          label={`Upgrade to ${plan.name}`}
+          highlight={plan.highlight}
+        />
+      ) : (
+        <Link
+          href="/signup"
+          style={{
+            display: "block",
+            textAlign: "center",
+            padding: "10px 16px",
+            borderRadius: 8,
+            background: plan.highlight ? "var(--ink)" : "transparent",
+            color: plan.highlight ? "var(--bg)" : "var(--ink)",
+            border: plan.highlight
+              ? "1px solid var(--ink)"
+              : "1px solid var(--border-strong)",
+            fontSize: 13,
+            fontWeight: 600,
+            textDecoration: "none",
+            marginTop: "auto",
+          }}
+        >
+          Start 14-day trial
+        </Link>
+      )}
     </div>
   );
 }
