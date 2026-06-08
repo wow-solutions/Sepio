@@ -11,13 +11,17 @@ import { createCheckoutAction } from "@/lib/billing/checkout";
 export function BillingCta({ label }: { label: string }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   function go() {
     setError(null);
+    setNotice(null);
     startTransition(async () => {
       const result = await createCheckoutAction("early");
       if ("url" in result) {
         window.location.href = result.url;
+      } else if ("notice" in result) {
+        setNotice(result.notice);
       } else {
         setError(result.error);
       }
@@ -57,6 +61,19 @@ export function BillingCta({ label }: { label: string }) {
           }}
         >
           {error}
+        </div>
+      )}
+      {notice && (
+        <div
+          style={{
+            fontSize: 10.5,
+            color: "var(--ink-muted)",
+            marginTop: 6,
+            textAlign: "center",
+            lineHeight: 1.4,
+          }}
+        >
+          {notice}
         </div>
       )}
     </>

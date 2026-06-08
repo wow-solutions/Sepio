@@ -31,13 +31,16 @@ export function AccountMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [billingPending, startBilling] = useTransition();
+  const [billingNotice, setBillingNotice] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   function openBilling() {
+    setBillingNotice(null);
     startBilling(async () => {
       const result = await createCheckoutAction("early");
       if ("url" in result) window.location.href = result.url;
+      else if ("notice" in result) setBillingNotice(result.notice);
       else setOpen(false);
     });
   }
@@ -148,6 +151,18 @@ export function AccountMenu({
           label={billingPending ? "…" : labels.billing}
           onClick={openBilling}
         />
+        {billingNotice && (
+          <div
+            style={{
+              padding: "0 14px 11px",
+              fontSize: 11.5,
+              lineHeight: 1.4,
+              color: "var(--ink-muted)",
+            }}
+          >
+            {billingNotice}
+          </div>
+        )}
         <div
           style={{
             height: "0.5px",

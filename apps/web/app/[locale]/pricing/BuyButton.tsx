@@ -26,7 +26,7 @@ export function BuyButton({
       if ("url" in result) {
         window.location.href = result.url;
       } else {
-        setError(result.error);
+        setError("error" in result ? result.error : result.notice);
       }
     });
   }

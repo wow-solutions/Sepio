@@ -643,6 +643,7 @@
     "upgrade": "Upgrade now",
     "managePlan": "Manage plan",
     "updateBilling": "Update billing",
+    "billingNotice": "Subscription management opens once the store is activated.",
     "selectBrandHint": "Pick a brand to start writing, or add one.",
     "newPost": "New post",
     "showMenu": "Show menu",

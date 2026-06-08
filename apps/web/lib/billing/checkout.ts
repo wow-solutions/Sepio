@@ -7,12 +7,19 @@
 // The API key lives only here (server-side). The client gets back a URL to send
 // the browser to, or an error string.
 
+import { getTranslations } from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
 import { SITE_URL } from "@/lib/seo";
 import { isPaidTier, variantForTier } from "./config";
 import { createCheckout, getCustomerPortalUrl } from "./lemon-squeezy";
 
-export type CheckoutResult = { url: string } | { error: string };
+// `notice` is a calm, informational message (not an error) — used when the
+// customer portal isn't reachable yet because the LS store is still in test
+// mode / pending activation.
+export type CheckoutResult =
+  | { url: string }
+  | { error: string }
+  | { notice: string };
 
 export async function createCheckoutAction(planTier: string): Promise<CheckoutResult> {
   if (!isPaidTier(planTier)) {
@@ -41,6 +48,14 @@ export async function createCheckoutAction(planTier: string): Promise<CheckoutRe
 
   try {
     if (hasLiveSub) {
+      // The LS customer portal is a storefront page gated behind store
+      // activation. While the store is in test mode (pending activation) it
+      // returns "store not activated", so show a calm notice instead of bouncing
+      // the user to that page. Flip LEMONSQUEEZY_TEST_MODE=false once activated.
+      if (process.env.LEMONSQUEEZY_TEST_MODE === "true") {
+        const t = await getTranslations("shell");
+        return { notice: t("billingNotice") };
+      }
       const portal = await getCustomerPortalUrl(account!.lemonsqueezy_subscription_id!);
       if (!portal) {
         return { error: "Could not open the billing portal. Please contact support." };
