@@ -399,34 +399,48 @@ export default async function HomePage({
             <span className="eyebrow">{C.pricing.eyebrow}</span>
             <h2 className="display-2">{C.pricing.h2}</h2>
           </div>
+          <div className="early-access">
+            <div className="ea-left">
+              <span className="ea-eyebrow">{C.pricing.early.tier}</span>
+              <div className="ea-name">{C.pricing.early.name}</div>
+              <div className="ea-sub">{C.pricing.early.sub}</div>
+            </div>
+            <div className="ea-right">
+              <div className="ea-amount">
+                <span className="num">$29</span>
+                <span className="per">/ {C.pricing.perMonth}</span>
+              </div>
+              <div className="ea-note">{C.pricing.early.note}</div>
+              <Link href="/signup" className="price-cta primary">
+                {C.pricing.early.cta}
+              </Link>
+            </div>
+          </div>
           <div className="pricing-grid">
-            {C.pricing.tiers.map((t, i) => {
-              const featured = i === 1;
-              return (
-                <article className={`price-card${featured ? " featured" : ""}`} key={t.tier}>
-                  <div className="tier">
-                    {t.tier}
-                    {featured && <span className="badge">{C.pricing.badge}</span>}
-                  </div>
-                  <div className="price-name">{t.name}</div>
-                  <div className="price-sub">{t.sub}</div>
-                  <div className="price-amount">
-                    <span className="num">{prices[i]}</span>
-                    <span className="per">/ {C.pricing.perMonth}</span>
-                  </div>
-                  <ul>
-                    {t.features.map((li, j) => (
-                      <li className={!featured && j === t.features.length - 1 && i === 0 ? "muted" : undefined} key={li}>
-                        {li}
-                      </li>
-                    ))}
-                  </ul>
-                  <Link href="/signup" className={`price-cta ${featured ? "primary" : "ghost"}`}>
-                    {t.cta}
-                  </Link>
-                </article>
-              );
-            })}
+            {C.pricing.tiers.map((t, i) => (
+              <article className="price-card soon" key={t.tier}>
+                <div className="tier">
+                  {t.tier}
+                  <span className="badge soon-badge">{C.pricing.soon}</span>
+                </div>
+                <div className="price-name">{t.name}</div>
+                <div className="price-sub">{t.sub}</div>
+                <div className="price-amount">
+                  <span className="num">{prices[i]}</span>
+                  <span className="per">/ {C.pricing.perMonth}</span>
+                </div>
+                <ul>
+                  {t.features.map((li, j) => (
+                    <li className={i === 0 && j === t.features.length - 1 ? "muted" : undefined} key={li}>
+                      {li}
+                    </li>
+                  ))}
+                </ul>
+                <span className="price-cta soon-cta" aria-disabled="true">
+                  {C.pricing.soon}
+                </span>
+              </article>
+            ))}
           </div>
         </div>
       </section>

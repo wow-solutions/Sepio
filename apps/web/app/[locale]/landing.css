@@ -275,6 +275,26 @@
   & .price-card .price-cta.primary { color: var(--cream); background: var(--sepia); }
   & .price-card .price-cta.primary:hover { background: #7d4d2d; }
 
+  /* Early-access lead offer (the one live plan) above the coming-soon ladder */
+  & .early-access { display: flex; justify-content: space-between; align-items: center; gap: 32px; background: linear-gradient(180deg, rgba(176, 123, 80, 0.12) 0%, var(--surface-elev) 70%); border: 1px solid rgba(176, 123, 80, 0.45); border-radius: 18px; padding: 30px 40px; margin-bottom: 22px; }
+  & .early-access .ea-eyebrow { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--sepia-bright); }
+  & .early-access .ea-name { font-family: var(--f-display); font-variation-settings: "opsz" 60; font-size: 30px; font-weight: 500; line-height: 1.05; letter-spacing: -0.02em; margin: 8px 0; color: var(--on-dark); }
+  & .early-access .ea-name em { font-style: italic; color: var(--sepia-bright); font-weight: 400; }
+  & .early-access .ea-sub { color: var(--on-dark-soft); font-size: 15px; line-height: 1.5; max-width: 540px; }
+  & .early-access .ea-right { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; flex: 0 0 auto; }
+  & .early-access .ea-amount { display: flex; align-items: baseline; gap: 4px; }
+  & .early-access .ea-amount .num { font-family: var(--f-display); font-variation-settings: "opsz" 144; font-size: 52px; font-weight: 500; line-height: 1; letter-spacing: -0.03em; color: var(--on-dark); }
+  & .early-access .ea-amount .per { font-family: var(--f-mono); font-size: 12px; color: var(--on-dark-soft); letter-spacing: 0.06em; }
+  & .early-access .ea-note { font-size: 12px; color: var(--on-dark-faint); }
+  & .early-access .price-cta.primary { color: var(--cream); background: var(--sepia); padding: 13px 30px; border-radius: 9999px; font-size: 14px; font-weight: 500; transition: background 0.2s; }
+  & .early-access .price-cta.primary:hover { background: #7d4d2d; }
+
+  /* Coming-soon ladder: dimmed, no live CTA */
+  & .price-card.soon { opacity: 0.6; }
+  & .price-card.soon:hover { transform: none; }
+  & .price-card .tier .badge.soon-badge { background: rgba(255, 255, 255, 0.05); border-color: var(--line-strong); color: var(--on-dark-soft); }
+  & .price-card .price-cta.soon-cta { color: var(--on-dark-faint); border: 1px dashed var(--line-strong); cursor: default; }
+
   /* ── FAQ ── */
   & .faq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   & .faq { background: var(--surface-elev); border: 1px solid var(--line); border-radius: 12px; padding: 26px 28px; }
@@ -328,6 +348,8 @@
   .lp .feature-grid,
   .lp .faq-grid,
   .lp .pricing-grid { grid-template-columns: 1fr; }
+  .lp .early-access { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .lp .early-access .ea-right { align-items: flex-start; }
   .lp .platforms-grid { grid-template-columns: repeat(3, 1fr); }
   .lp .demo-grid { grid-template-columns: 1fr; }
   .lp .footer-top { grid-template-columns: 1fr 1fr; }

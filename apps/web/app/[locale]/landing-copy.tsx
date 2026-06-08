@@ -30,7 +30,8 @@ export type LandingCopy = {
   features: { eyebrow: string; h2: ReactNode; items: { title: ReactNode; body: string }[] };
   testimonial: { quote: ReactNode; role: string };
   pricing: {
-    eyebrow: string; h2: ReactNode; perMonth: string; badge: string;
+    eyebrow: string; h2: ReactNode; perMonth: string; badge: string; soon: string;
+    early: { tier: string; name: ReactNode; sub: string; note: string; cta: string };
     tiers: { tier: string; name: ReactNode; sub: string; features: string[]; cta: string }[];
   };
   faq: { eyebrow: string; h2: ReactNode; items: { q: string; a: ReactNode }[] };
@@ -98,7 +99,8 @@ const en: LandingCopy = {
   pricing: {
     eyebrow: "Pricing · monthly, cancel anytime",
     h2: <>Operator-priced.<br />Not {em("enterprise")}-priced.</>,
-    perMonth: "month", badge: "most chosen",
+    perMonth: "month", badge: "most chosen", soon: "Coming soon",
+    early: { tier: "Early access", name: <>Try Sepio {em("now.")}</>, sub: "One founding price while we build. Everything available today — and a direct line to shape the rest.", note: "Founding price, locked while you stay", cta: "Start free" },
     tiers: [
       { tier: "Solo", name: <>For {em("one")} brand.</>, sub: "Founders writing for themselves.", features: ["1 brand voice", "6 platforms connected", "30 scheduled posts / month", "Native previews", "No team seats"], cta: "Start free" },
       { tier: "Operator", name: <>For {em("marketing")} consultants.</>, sub: "Ship for multiple clients without burning out.", features: ["10 brand voices", "Unlimited platforms", "Unlimited posts", "5 team seats", "Approval workflows", "Cross-platform analytics"], cta: "Start free trial" },
@@ -192,7 +194,8 @@ const es: LandingCopy = {
   pricing: {
     eyebrow: "Precios · mensual, cancela cuando quieras",
     h2: <>Precio de operador.<br />No de {em("empresa.")}</>,
-    perMonth: "mes", badge: "más elegido",
+    perMonth: "mes", badge: "más elegido", soon: "Próximamente",
+    early: { tier: "Acceso anticipado", name: <>Prueba Sepio {em("ya.")}</>, sub: "Un precio fundador mientras construimos. Todo lo disponible hoy — y línea directa para moldear el resto.", note: "Precio fundador, fijo mientras sigas", cta: "Empezar gratis" },
     tiers: [
       { tier: "Solo", name: <>Para {em("una")} marca.</>, sub: "Fundadores que escriben para sí mismos.", features: ["1 voz de marca", "6 plataformas conectadas", "30 posts programados / mes", "Vistas previas nativas", "Sin asientos de equipo"], cta: "Empezar gratis" },
       { tier: "Operador", name: <>Para {em("consultores")} de marketing.</>, sub: "Publica para varios clientes sin quemarte.", features: ["10 voces de marca", "Plataformas ilimitadas", "Posts ilimitados", "5 asientos de equipo", "Flujos de aprobación", "Analítica multiplataforma"], cta: "Probar gratis" },
@@ -286,7 +289,8 @@ const ru: LandingCopy = {
   pricing: {
     eyebrow: "Цены · помесячно, отмена в любой момент",
     h2: <>Цена оператора.<br />Не {em("корпоративная.")}</>,
-    perMonth: "мес", badge: "выбирают чаще",
+    perMonth: "мес", badge: "выбирают чаще", soon: "Скоро",
+    early: { tier: "Ранний доступ", name: <>Попробуй Sepio {em("сейчас.")}</>, sub: "Одна founding-цена, пока мы достраиваем. Всё, что доступно сегодня — и прямая связь, чтобы влиять на остальное.", note: "Founding-цена, закреплена пока ты с нами", cta: "Начать бесплатно" },
     tiers: [
       { tier: "Solo", name: <>Для {em("одного")} бренда.</>, sub: "Фаундеры, которые пишут сами.", features: ["1 голос бренда", "6 подключённых платформ", "30 запланированных постов / мес", "Родные превью", "Без мест для команды"], cta: "Начать бесплатно" },
       { tier: "Operator", name: <>Для {em("маркетинг")}-консультантов.</>, sub: "Веди нескольких клиентов, не выгорая.", features: ["10 голосов брендов", "Платформы без лимита", "Посты без лимита", "5 мест для команды", "Согласование", "Кросс-платформенная аналитика"], cta: "Начать бесплатно" },
