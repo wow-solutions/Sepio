@@ -75,20 +75,25 @@ export default async function PricingPage() {
         style={{
           maxWidth: 1100,
           margin: "0 auto",
-          padding: "72px 24px 32px",
+          padding: "104px 24px 32px",
           textAlign: "center",
         }}
       >
         <h1
           style={{
-            fontSize: 40,
-            fontWeight: 600,
-            letterSpacing: "-0.02em",
+            fontFamily: "var(--font-fraunces), Georgia, serif",
+            fontVariationSettings: '"opsz" 144',
+            fontSize: "clamp(38px, 5.5vw, 56px)",
+            fontWeight: 500,
+            letterSpacing: "-0.03em",
+            lineHeight: 1.04,
             margin: "0 0 16px",
             color: "var(--ink)",
           }}
         >
-          Simple, honest pricing.
+          Simple,{" "}
+          <em style={{ fontStyle: "italic", color: "var(--brand)" }}>honest</em>{" "}
+          pricing.
         </h1>
         <p
           style={{
@@ -114,7 +119,7 @@ export default async function PricingPage() {
       >
         <div style={{ display: "flex", justifyContent: "center" }}>
           {PLANS.map((plan) => (
-            <div key={plan.name} style={{ width: "100%", maxWidth: 360 }}>
+            <div key={plan.name} style={{ width: "100%", maxWidth: 480 }}>
               <PlanCard plan={plan} isAuthed={isAuthed} />
             </div>
           ))}
@@ -145,136 +150,136 @@ function PlanCard({ plan, isAuthed }: { plan: Plan; isAuthed: boolean }) {
   return (
     <div
       style={{
-        border: plan.highlight
-          ? "1px solid var(--ink)"
-          : "1px solid var(--border-subtle)",
-        borderRadius: 12,
-        padding: "28px 24px",
-        background: "var(--surface, transparent)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 16,
-        position: "relative",
+        background:
+          "linear-gradient(180deg, rgba(176,123,80,0.10) 0%, var(--surface-elev, var(--surface)) 62%)",
+        border: "1px solid var(--border-strong)",
+        borderRadius: 22,
+        padding: "36px 34px",
+        boxShadow: "0 30px 80px rgba(0,0,0,0.35)",
       }}
     >
-      {plan.highlight && (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 16,
+        }}
+      >
         <span
           style={{
-            position: "absolute",
-            top: -10,
-            left: 20,
-            background: "var(--ink)",
-            color: "var(--bg)",
+            fontFamily: "var(--font-mono)",
             fontSize: 11,
-            padding: "2px 10px",
-            borderRadius: 999,
-            letterSpacing: "0.04em",
+            letterSpacing: "0.18em",
             textTransform: "uppercase",
-            fontWeight: 600,
-          }}
-        >
-          Most popular
-        </span>
-      )}
-      <div>
-        <div
-          style={{
-            fontSize: 14,
-            color: "var(--ink-muted)",
-            marginBottom: 4,
-            fontWeight: 600,
-            letterSpacing: "0.02em",
-            textTransform: "uppercase",
+            color: "var(--brand)",
           }}
         >
           {plan.name}
-        </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-          <span
+        </span>
+        <div style={{ textAlign: "right", flex: "0 0 auto" }}>
+          <div
             style={{
-              fontSize: 36,
-              fontWeight: 600,
-              letterSpacing: "-0.02em",
+              fontFamily: "var(--font-fraunces), Georgia, serif",
+              fontVariationSettings: '"opsz" 144',
+              fontSize: 52,
+              fontWeight: 500,
+              letterSpacing: "-0.03em",
+              lineHeight: 1,
               color: "var(--ink)",
             }}
           >
             ${plan.price}
-          </span>
-          <span style={{ fontSize: 14, color: "var(--ink-faint)" }}>/mo</span>
+          </div>
+          <div
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 12,
+              color: "var(--ink-faint)",
+              marginTop: 2,
+            }}
+          >
+            / month
+          </div>
         </div>
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--ink-muted)",
-            margin: "8px 0 0",
-            lineHeight: 1.5,
-          }}
-        >
-          {plan.blurb}
-        </p>
       </div>
+
+      <p
+        style={{
+          fontFamily: "var(--font-fraunces), Georgia, serif",
+          fontVariationSettings: '"opsz" 48',
+          fontSize: 18,
+          fontWeight: 500,
+          lineHeight: 1.35,
+          letterSpacing: "-0.01em",
+          color: "var(--ink)",
+          margin: "14px 0 0",
+        }}
+      >
+        {plan.blurb}
+      </p>
+
+      <div
+        style={{ height: 1, background: "var(--border-subtle)", margin: "24px 0" }}
+      />
 
       <ul
         style={{
           listStyle: "none",
-          margin: 0,
+          margin: "0 0 30px",
           padding: 0,
           display: "flex",
           flexDirection: "column",
-          gap: 8,
-          flex: 1,
+          gap: 13,
         }}
       >
         {plan.features.map((feature) => (
           <li
             key={feature}
             style={{
-              fontSize: 13,
+              fontSize: 14.5,
               color: "var(--ink)",
               display: "flex",
-              gap: 8,
+              gap: 10,
               alignItems: "flex-start",
-              lineHeight: 1.45,
+              lineHeight: 1.5,
             }}
           >
-            <span
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--brand)"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ flex: "0 0 auto", marginTop: 3 }}
               aria-hidden="true"
-              style={{
-                color: "var(--ink-muted)",
-                marginTop: 2,
-                fontSize: 11,
-              }}
             >
-              ✓
-            </span>
+              <path d="M5 12l4 4L19 6" />
+            </svg>
             <span>{feature}</span>
           </li>
         ))}
       </ul>
 
       {isAuthed ? (
-        <BuyButton
-          tier={plan.tier}
-          label={`Upgrade to ${plan.name}`}
-          highlight={plan.highlight}
-        />
+        <BuyButton tier={plan.tier} label={`Upgrade to ${plan.name}`} highlight />
       ) : (
         <Link
           href="/signup"
           style={{
             display: "block",
+            width: "100%",
             textAlign: "center",
-            padding: "10px 16px",
-            borderRadius: 8,
-            background: plan.highlight ? "var(--ink)" : "transparent",
-            color: plan.highlight ? "var(--bg)" : "var(--ink)",
-            border: plan.highlight
-              ? "1px solid var(--ink)"
-              : "1px solid var(--border-strong)",
-            fontSize: 13,
+            padding: "14px 22px",
+            borderRadius: 9999,
+            background: "var(--sepio-sepia, var(--brand))",
+            color: "var(--sepio-cream)",
+            fontSize: 14,
             fontWeight: 600,
             textDecoration: "none",
-            marginTop: "auto",
           }}
         >
           Start 14-day trial

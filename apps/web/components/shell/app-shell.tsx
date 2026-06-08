@@ -35,13 +35,23 @@ export async function AppShell({
 }: Props) {
   const t = await getTranslations("shell");
 
-  // Resolve the trial label here (server) so Rail receives a plain string and
-  // can pass cleanly through the client CollapsibleRail.
+  // Resolve trial + billing labels here (server) so Rail/AccountMenu receive
+  // plain strings and pass cleanly through the client CollapsibleRail / menu.
+  // NOTE: `trial` is a plan_TIER, not a plan_status (statuses are active/
+  // cancelled/past_due/expired/paused/unpaid) — gating on planStatue here was a
+  // bug that hid the countdown for every trial user.
+  const isTrial = planTier === "trial";
   const trialDays = trialDaysLeft(trialEndsAt);
   const trialLabel =
-    planStatus === "trial" && trialDays !== null
-      ? t("trialLeft", { days: trialDays })
-      : null;
+    isTrial && trialDays !== null ? t("trialLeft", { days: trialDays }) : null;
+
+  // State-aware billing CTA label. The action is identical (createCheckoutAction
+  // returns checkout for trial, portal for subscribers); only the copy changes.
+  const billingLabel = isTrial
+    ? t("upgrade")
+    : planStatus === "past_due" || planStatus === "unpaid"
+      ? t("updateBilling")
+      : t("managePlan");
 
   return (
     <div
@@ -63,6 +73,7 @@ export async function AppShell({
           account: t("account"),
           changePassword: t("changePassword"),
           signOut: t("signOut"),
+          billing: billingLabel,
         }}
       />
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
@@ -76,6 +87,7 @@ export async function AppShell({
             currentBrandId={currentBrandId}
             planTier={planTier}
             trialLabel={trialLabel}
+            billingLabel={billingLabel}
             labels={{
               workspace: t("workspace"),
               home: t("home"),

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { Link } from "@/i18n/navigation";
 import { signout } from "@/lib/auth-actions";
+import { createCheckoutAction } from "@/lib/billing/checkout";
 
 gsap.registerPlugin(useGSAP);
 
@@ -12,6 +13,9 @@ type Labels = {
   account: string;
   changePassword: string;
   signOut: string;
+  // State-aware billing entry ("Upgrade plan" / "Manage subscription" /
+  // "Update billing"), resolved server-side in AppShell.
+  billing: string;
 };
 
 // The avatar in the app top bar, upgraded to an account dropdown: change
@@ -26,8 +30,17 @@ export function AccountMenu({
   labels: Labels;
 }) {
   const [open, setOpen] = useState(false);
+  const [billingPending, startBilling] = useTransition();
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  function openBilling() {
+    startBilling(async () => {
+      const result = await createCheckoutAction("early");
+      if ("url" in result) window.location.href = result.url;
+      else setOpen(false);
+    });
+  }
 
   // GSAP open/close: scale + fade from the top-right corner. Runs client-side
   // only (useGSAP) and reverts automatically on unmount. The panel starts
@@ -130,6 +143,17 @@ export function AccountMenu({
           boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
         }}
       >
+        <MenuRow
+          as="button"
+          label={billingPending ? "…" : labels.billing}
+          onClick={openBilling}
+        />
+        <div
+          style={{
+            height: "0.5px",
+            background: "color-mix(in srgb, var(--ink) 10%, transparent)",
+          }}
+        />
         <Link
           href="/reset"
           onClick={() => setOpen(false)}
@@ -154,9 +178,11 @@ export function AccountMenu({
 function MenuRow({
   label,
   as = "link",
+  onClick,
 }: {
   label: string;
-  as?: "link" | "submit";
+  as?: "link" | "submit" | "button";
+  onClick?: () => void;
 }) {
   const [active, setActive] = useState(false);
   const style: React.CSSProperties = {
@@ -187,6 +213,13 @@ function MenuRow({
   if (as === "submit") {
     return (
       <button type="submit" style={style} {...handlers}>
+        {label}
+      </button>
+    );
+  }
+  if (as === "button") {
+    return (
+      <button type="button" style={style} onClick={onClick} {...handlers}>
         {label}
       </button>
     );

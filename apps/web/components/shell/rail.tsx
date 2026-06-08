@@ -1,5 +1,6 @@
 import { Link } from "@/i18n/navigation";
 import { BrandSwitcher, type BrandOption } from "@/components/brand/brand-switcher";
+import { BillingCta } from "./billing-cta";
 
 export type RailActive =
   | "home"
@@ -19,6 +20,9 @@ type Props = {
   // in AppShell so this stays a plain string — Rail can be passed through the
   // client CollapsibleRail without a non-serializable function prop.
   trialLabel?: string | null;
+  // State-aware billing CTA label ("Upgrade now" / "Manage plan" / "Update
+  // billing"), resolved in AppShell. The action behind it is the same for all.
+  billingLabel?: string;
   labels: {
     workspace: string;
     home: string;
@@ -53,6 +57,7 @@ export function Rail({
   currentBrandId,
   planTier,
   trialLabel,
+  billingLabel,
   labels,
 }: Props) {
   // Brand-scoped routes need a brand. When none is selected, Writer/Posts point
@@ -63,8 +68,6 @@ export function Rail({
   const postsHref = currentBrandId
     ? `/posts?brand=${currentBrandId}`
     : "/posts";
-
-  const showTrial = Boolean(trialLabel);
 
   return (
     <aside
@@ -129,9 +132,9 @@ export function Rail({
         </div>
       </div>
 
-      {/* Trial / plan card */}
-      <div style={{ marginTop: "auto" }}>
-        {showTrial ? (
+      {/* Plan / billing card — countdown only on trial, CTA in every state */}
+      {planTier && (
+        <div style={{ marginTop: "auto" }}>
           <div
             style={{
               padding: 14,
@@ -140,18 +143,20 @@ export function Rail({
               borderRadius: 10,
             }}
           >
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9.5,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                color: "var(--brand)",
-                marginBottom: 8,
-              }}
-            >
-              {trialLabel}
-            </div>
+            {trialLabel && (
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 9.5,
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  color: "var(--brand)",
+                  marginBottom: 8,
+                }}
+              >
+                {trialLabel}
+              </div>
+            )}
             <div
               style={{
                 fontFamily: "var(--font-fraunces), Georgia, serif",
@@ -164,45 +169,12 @@ export function Rail({
                 textTransform: "capitalize",
               }}
             >
-              {planTier ?? "trial"}
-            </div>
-            <Link
-              href="/pricing"
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "center",
-                padding: "7px 12px",
-                background: "var(--brand)",
-                color: "var(--sepio-ink)",
-                fontSize: 12,
-                fontWeight: 500,
-                borderRadius: 9999,
-                textDecoration: "none",
-              }}
-            >
-              {labels.upgrade} →
-            </Link>
-          </div>
-        ) : (
-          planTier && (
-            <div
-              style={{
-                padding: "10px 14px",
-                border: "1px solid var(--border-subtle)",
-                borderRadius: 10,
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "var(--ink-faint)",
-              }}
-            >
               {planTier}
             </div>
-          )
-        )}
-      </div>
+            {billingLabel && <BillingCta label={billingLabel} />}
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

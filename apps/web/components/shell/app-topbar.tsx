@@ -11,7 +11,7 @@ type Props = {
   newPostHref?: string | null;
   newPostLabel: string;
   userInitials?: string;
-  accountLabels: { account: string; changePassword: string; signOut: string };
+  accountLabels: { account: string; changePassword: string; signOut: string; billing: string };
 };
 
 // The authed app top bar — 56px, per app handoff 2026-05-24. Brand lockup +

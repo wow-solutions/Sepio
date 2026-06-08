@@ -641,6 +641,8 @@
     "connect": "connect",
     "trialLeft": "Trial · {days, plural, one {# day left} other {# days left}}",
     "upgrade": "Upgrade now",
+    "managePlan": "Manage plan",
+    "updateBilling": "Update billing",
     "selectBrandHint": "Pick a brand to start writing, or add one.",
     "newPost": "New post",
     "showMenu": "Show menu",
