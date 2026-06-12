@@ -1,5 +1,6 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound, redirect } from "next/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/app-shell";
@@ -7,9 +8,10 @@ import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
 import { DifferentiationSchema } from "@/lib/market-brain/derived-only";
-import { disconnectLinkedIn } from "./actions";
+import { disconnectLinkedIn, detectPlatformForBrand } from "./actions";
 import { CompetitorsPanel } from "./competitors-panel";
 import { RulesPanel, type BrandRuleRow } from "./rules-panel";
+import { WordPressConnect } from "./wordpress-connect";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -52,6 +54,31 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
     .eq("brand_id", brandId)
     .eq("platform", "linkedin")
     .maybeSingle();
+
+  // Fetch WordPress connection status
+  const { data: wpToken } = await supabase
+    .from("brand_oauth_tokens")
+    .select("account_handle, status")
+    .eq("brand_id", brandId)
+    .eq("platform", "wordpress")
+    .maybeSingle();
+
+  // Site detection fields (new columns; database.types.ts not regenerated yet).
+  // TODO: regen types, drop the cast.
+  const { data: siteRow } = await (supabase as unknown as SupabaseClient)
+    .from("brands")
+    .select("website_url, detected_platform, detected_confidence, detected_at, platform_override")
+    .eq("id", brandId)
+    .maybeSingle();
+  const site = (siteRow ?? {}) as {
+    website_url?: string | null;
+    detected_platform?: string | null;
+    detected_confidence?: string | null;
+    detected_at?: string | null;
+    platform_override?: string | null;
+  };
+  const effectivePlatform = site.platform_override ?? site.detected_platform ?? null;
+  const recommended = recommendedMethod(effectivePlatform);
 
   const { data: account } = await supabase
     .from("accounts")
@@ -293,6 +320,116 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
           </div>
         </div>
 
+        {/* Publishing destinations */}
+        <h2
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: "var(--ink)",
+            margin: "40px 0 4px",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          Publishing
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: "0 0 16px" }}>
+          Where articles for this brand get published.
+        </p>
+
+        {/* Site detection + recommended method */}
+        <div
+          style={{
+            background: "var(--raised)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 14,
+            padding: 22,
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+            }}
+          >
+            <div>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", margin: "0 0 4px" }}>
+                Your website
+              </h3>
+              {site.website_url ? (
+                <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: 0 }}>
+                  {site.website_url}
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                      color: "var(--ink-faint)",
+                      marginLeft: 12,
+                    }}
+                  >
+                    {site.detected_platform
+                      ? `detected: ${site.detected_platform}${site.detected_confidence ? ` (${site.detected_confidence})` : ""}`
+                      : "not scanned yet"}
+                  </span>
+                </p>
+              ) : (
+                <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: 0 }}>
+                  No website set for this brand.
+                </p>
+              )}
+              <p style={{ fontSize: 13, color: "var(--ink)", margin: "8px 0 0" }}>
+                Recommended: {recommended.label}
+              </p>
+            </div>
+            {site.website_url && (
+              <form action={detectWithBrand.bind(null, brand.id)}>
+                <button type="submit" style={buttonStyleSecondary()}>
+                  {site.detected_at ? "Re-scan" : "Scan site"}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+
+        {/* WordPress */}
+        <div style={{ marginBottom: 16 }}>
+          <WordPressConnect
+            brandId={brand.id}
+            connected={!!wpToken}
+            accountHandle={wpToken?.account_handle ?? null}
+          />
+        </div>
+
+        {/* Hosted blog — always-available universal fallback */}
+        <div
+          style={{
+            background: "var(--raised)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 14,
+            padding: 22,
+          }}
+        >
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)", margin: "0 0 4px" }}>
+            Sepio-hosted blog
+          </h3>
+          <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: 0 }}>
+            Always available. Publishes to a blog we host for you — works even when your site cannot
+            be connected directly.
+          </p>
+          <p
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 11,
+              color: "var(--ink-faint)",
+              margin: "8px 0 0",
+            }}
+          >
+            /p/{brand.id}
+          </p>
+        </div>
+
         {/* Market Brain (gated by beta_access) */}
         {betaAccess && (
           <>
@@ -481,6 +618,30 @@ function makeInitials(name: string): string {
 async function disconnectWithBrand(brandId: string): Promise<void> {
   "use server";
   await disconnectLinkedIn(brandId);
+}
+
+// Form-action wrapper for the "Scan site" button (must return void).
+async function detectWithBrand(brandId: string): Promise<void> {
+  "use server";
+  await detectPlatformForBrand(brandId);
+}
+
+// Map the detected (or overridden) platform → the recommended publish method.
+function recommendedMethod(platform: string | null): { key: string; label: string } {
+  switch (platform) {
+    case "wordpress":
+      return { key: "wordpress", label: "Connect WordPress — publishes to your real site." };
+    case "shopify":
+    case "webflow":
+    case "wix":
+    case "squarespace":
+      return {
+        key: "hosted",
+        label: `${platform} detected — direct publishing is coming soon; use your Sepio-hosted blog for now.`,
+      };
+    default:
+      return { key: "hosted", label: "Publish to your Sepio-hosted blog (works for any site)." };
+  }
 }
 
 function Banner({ tone, title, body }: { tone: "success" | "error"; title: string; body: string }) {

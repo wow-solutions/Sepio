@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { SepioMark } from "@/components/shell/sepio-mark";
+import { BlogBody } from "@/components/blog/blog-body";
 import { adaptFor, type Platform } from "@/lib/format-adapter";
 import {
   ANGLES_USING_ARTICLE,
@@ -11,6 +12,9 @@ import {
 import { saveDraft } from "./actions";
 import { TopicPicker } from "./_components/topic-picker";
 import { AngleDropdown, AngleExpansion } from "./_components/angle-dropdown";
+import { EditorialPanel } from "../posts/[id]/editorial-panel";
+import { useKitchen } from "@/components/shell/kitchen-context";
+import { KitchenCenter, SegToggle, type ViewMode } from "./_components/kitchen-preview";
 
 type PickedTopic = {
   id: string;
@@ -24,7 +28,14 @@ type GenerateResponse = {
   cache_read_tokens: number;
   grounded: boolean;
   source: { url: string; title: string | null } | null;
+  // Present for blog (platform 'hosted'); absent on the LinkedIn path.
+  platform?: string;
+  title?: string | null;
+  excerpt?: string | null;
 };
+
+// Output format chosen in the channel selector — drives the next generation.
+type OutputFormat = "linkedin" | "blog";
 
 // Source-hydration state for the picked topic + selected article-using angle.
 // 'unavailable' covers the logical no-fetch cases: the apply angle, or free-text
@@ -54,6 +65,22 @@ type Stage =
 
 const LINKEDIN_MAX = 3000;
 
+// An existing post loaded into the writer for editing (kitchen slice 2). When
+// present, the writer is in EDIT mode: generation controls are hidden, the
+// platform is locked, and the Editorial Memory panel attaches below the editor.
+// `body` is the platform-correct body (content_markdown for hosted, else text),
+// resolved server-side via getPostBody.
+export type InitialPost = {
+  id: string;
+  platform: string;
+  language: string;
+  status: string;
+  title: string;
+  excerpt: string;
+  body: string;
+  externalUrl: string | null;
+};
+
 type Props = {
   brandId: string;
   brandName: string;
@@ -63,25 +90,73 @@ type Props = {
     forbiddenWords: string[];
     seoKeywords: string[];
   };
+  // null = fresh-generation (create) mode. The parent keys this component by
+  // post id, so switching between create/edit fully remounts (clean state).
+  // When a content group is opened, this is the BLOG SOURCE (the main editor
+  // always edits the source; the rail/center handle the opened channel variant).
+  initialPost?: InitialPost | null;
+  // True when an existing content group was opened. The KitchenProvider is then
+  // born hydrated (source + variants + active), so the writer must NOT re-register
+  // the source (that would reset the hydrated variants).
+  hasGroup?: boolean;
+  // Gates the Editorial Memory panel in edit mode (same beta lock as /posts/[id]).
+  betaAccess?: boolean;
 };
 
-export function WriterClient({ brandId, brandName, brandConfig }: Props) {
+export function WriterClient({
+  brandId,
+  brandName,
+  brandConfig,
+  initialPost = null,
+  hasGroup = false,
+  betaAccess = false,
+}: Props) {
   const t = useTranslations("writer");
+  // Locale-aware number formatting via next-intl (same locale on server +
+  // client) — bare Number.toLocaleString() picks the JS runtime default locale,
+  // which differs server↔client and triggers a hydration mismatch.
+  const format = useFormatter();
+  // Edit mode = an existing post was loaded. Derived from the prop (stable for
+  // the mounted instance thanks to the key={postId} remount in page.tsx).
+  const isEditing = initialPost != null;
+  const isPublishedPost = initialPost?.status === "published";
   const [mode, setMode] = useState<"topic" | "article">("topic");
+  // Channel/format selector — 'linkedin' (default) or 'blog' (long-form → hosted).
+  // The writer always produces the blog article — the foundation of the content
+  // kitchen (everything else fans out from it). Channel selection lives in the
+  // rail, so there's no in-writer format switch.
+  const outputFormat: OutputFormat = "blog";
   const [topic, setTopic] = useState("");
   const [sourceText, setSourceText] = useState("");
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [originalContent, setOriginalContent] = useState("");
-  const [postId, setPostId] = useState<string | null>(null);
-  const [status, setStatus] = useState<"draft" | "pending_approval" | null>(
-    null,
+  // State seeds from initialPost in edit mode (component is remounted per post
+  // id, so these initializers run once with the right post loaded).
+  const [title, setTitle] = useState(initialPost?.title ?? "");
+  const [excerpt, setExcerpt] = useState(initialPost?.excerpt ?? "");
+  const [content, setContent] = useState(initialPost?.body ?? "");
+  const [originalContent, setOriginalContent] = useState(initialPost?.body ?? "");
+  // Baseline title for dirty-tracking a blog (editing only the title must still
+  // mark the draft dirty so publish saves it). Unused for LinkedIn.
+  const [originalTitle, setOriginalTitle] = useState(initialPost?.title ?? "");
+  const [postId, setPostId] = useState<string | null>(initialPost?.id ?? null);
+  // Platform of the post CURRENTLY in the editor (set at generate from the API
+  // response, or seeded from a loaded post). Drives the editor badge, char
+  // limit, save column, and preview — distinct from `outputFormat`, which only
+  // chooses the NEXT generation.
+  const [postPlatform, setPostPlatform] = useState<string | null>(
+    initialPost?.platform ?? null,
   );
-  const [stage, setStage] = useState<Stage>("idle");
+  const [status, setStatus] = useState<"draft" | "pending_approval" | null>(
+    initialPost?.status === "draft" || initialPost?.status === "pending_approval"
+      ? initialPost.status
+      : null,
+  );
+  const [stage, setStage] = useState<Stage>(initialPost ? "ready" : "idle");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [brandContextOpen, setBrandContextOpen] = useState(false);
-  const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(
+    initialPost?.status === "published" ? initialPost.externalUrl : null,
+  );
   // Snapshot of content before last humanize — drives the Undo button.
   const [humanizeSnapshot, setHumanizeSnapshot] = useState<string | null>(null);
   // Topic picker state — sprint 1C Lane F.
@@ -119,20 +194,100 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     avoidTop.shown.length > 0 ||
     topicsTop.shown.length > 0;
 
+  // The post in the editor is a blog article. Blog content has no LinkedIn
+  // length cap; the badge/counter/preview/save all switch on this.
+  const editorIsBlog = postPlatform === "hosted";
+  // The selector is set to blog → the NEXT generation is a blog (gates the
+  // topic/article toggle, since blog is topic-only for now).
+  const selectorIsBlog = outputFormat === "blog";
   const charCount = content.length;
-  const overLimit = charCount > LINKEDIN_MAX;
+  const overLimit = !editorIsBlog && charCount > LINKEDIN_MAX;
   const busy =
     stage === "generating" ||
     stage === "humanizing" ||
     stage === "saving" ||
     stage === "publishing";
-  const dirty = postId !== null && content !== originalContent;
+  const dirty =
+    postId !== null &&
+    (content !== originalContent || (editorIsBlog && title !== originalTitle));
+  // Locked-published = the post is published, so it's read-only. Covers BOTH a
+  // post loaded in published state AND one just published in this session (stage)
+  // — otherwise the editor would stay writable right after a publish.
+  const lockedPublished = isPublishedPost || stage === "published";
+
+  // ── Content kitchen ────────────────────────────────────────────────────────
+  // A blog (the source article) in the editor registers as the kitchen source, so
+  // the channel rail activates (toggle destinations + preview/generate per-channel
+  // variants from this article). Cleared when the post isn't an editable blog.
+  const {
+    setPresent: kitchenSetPresent,
+    setSource: kitchenSetSource,
+    syncBase: kitchenSyncBase,
+    source: kitchenSource,
+    active: kitchenActive,
+  } = useKitchen();
+  // Kitchen/blog mode = the writer will produce a blog (the foundation) or is
+  // editing one. The rail channel selector is interactive only then — not while
+  // writing a plain LinkedIn post (Codex: one source of truth, no two selectors).
+  const inKitchenMode = selectorIsBlog || postPlatform === "hosted";
+  useEffect(() => {
+    kitchenSetPresent(inKitchenMode);
+    return () => kitchenSetPresent(false);
+  }, [inKitchenMode, kitchenSetPresent]);
+  const isBlogSource =
+    postPlatform === "hosted" && postId !== null && !lockedPublished;
+  useEffect(() => {
+    // When a content group was opened, the provider is already hydrated (source +
+    // variants + active). Re-registering here would reset the variants, so skip
+    // the registration — but syncBase below still keeps the blog body fresh.
+    if (isBlogSource && postId && !hasGroup) {
+      kitchenSetSource(
+        { postId, brandId, language: initialPost?.language ?? "en" },
+        content,
+      );
+      return () => kitchenSetSource(null, "");
+    }
+    // content is intentionally read at registration only; syncBase keeps it fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBlogSource, postId, brandId, hasGroup, kitchenSetSource]);
+  useEffect(() => {
+    if (isBlogSource) kitchenSyncBase(content);
+  }, [content, isBlogSource, kitchenSyncBase]);
+  // Preview/Edit view mode for the kitchen center (shared by the blog + every
+  // channel variant). Default Edit; clicking a DIFFERENT channel flips to Preview
+  // (so a click shows how it looks). The initial mount stays in Edit.
+  const [kitchenViewMode, setKitchenViewMode] = useState<ViewMode>("edit");
+  const kitchenActiveRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (kitchenActiveRef.current === null) {
+      kitchenActiveRef.current = kitchenActive;
+      return;
+    }
+    if (kitchenActiveRef.current !== kitchenActive) {
+      kitchenActiveRef.current = kitchenActive;
+      setKitchenViewMode("preview");
+    }
+  }, [kitchenActive]);
+  // Preview/Edit toggle shows for any loaded post with content (blog or social).
+  // (Only the TITLE field below is blog-only — social posts have no title.)
+  const blogHasContent = !!postId && content.trim().length > 0;
+  const blogPreview = blogHasContent && kitchenViewMode === "preview";
+  // Social-post center preview renders the same platform-native card as the
+  // right rail. The non-blog editor is LinkedIn-shaped, so any non-telegram
+  // platform maps to the LinkedIn card.
+  const previewPlatform: Platform =
+    postPlatform === "telegram" ? "telegram" : "linkedin";
+  const socialAdapted = useMemo(
+    () => adaptFor(previewPlatform, { text: content }),
+    [previewPlatform, content],
+  );
   // Generation requires real input: a topic (picked card or typed hint) in topic
   // mode, or a long-enough source in article mode. The empty-topic "surprise me"
   // path is gated off until topic automation lands (Григорий 2026-06-03) — an
   // angle on an empty topic produces a useless "send me the gist" meta-reply.
+  // Blog is topic-only, so the article (source-adapt) path applies to LinkedIn.
   const canGenerate =
-    mode === "article"
+    mode === "article" && !selectorIsBlog
       ? sourceText.trim().length >= 50
       : pickedTopic !== null || topic.trim().length > 0;
 
@@ -142,9 +297,13 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
   // duplicate inflight calls and stale responses (selection changed mid-flight).
   const hydrateKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    // Only article-using angles in topic mode need a source.
+    // Only article-using angles in LinkedIn topic mode need a source (blog
+    // ignores angles entirely).
     const usesArticle =
-      mode === "topic" && angle !== null && ANGLES_USING_ARTICLE.has(angle);
+      !selectorIsBlog &&
+      mode === "topic" &&
+      angle !== null &&
+      ANGLES_USING_ARTICLE.has(angle);
 
     if (!usesArticle || !pickedTopic) {
       // apply angle, no angle, or free-text → logically source-free, no fetch.
@@ -193,7 +352,7 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [mode, angle, pickedTopic]);
+  }, [mode, angle, pickedTopic, selectorIsBlog]);
 
   async function onGenerate() {
     setError(null);
@@ -203,6 +362,7 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
 
     const payload: {
       brand_id: string;
+      format?: "linkedin_post" | "blog";
       topic_hint?: string;
       source_text?: string;
       topic_candidate_id?: string;
@@ -211,7 +371,16 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     } = {
       brand_id: brandId,
     };
-    if (mode === "article") {
+    // Blog (kitchen): topic-only long-form → platform 'hosted'. No source_text
+    // adapt, no angle/stance. The topic comes from a picked card or free text.
+    if (selectorIsBlog) {
+      payload.format = "blog";
+      if (pickedTopic) {
+        payload.topic_candidate_id = pickedTopic.id;
+      } else {
+        payload.topic_hint = topic.trim() || undefined;
+      }
+    } else if (mode === "article") {
       const src = sourceText.trim();
       if (src.length < 50) {
         setError(t("articleTooShort"));
@@ -227,8 +396,9 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
       payload.topic_hint = topic.trim() || undefined;
     }
 
-    // Angle-of-approach — topic mode only. Comment angle requires a stance note;
-    // guard before the fetch, mirroring the articleTooShort guard above.
+    // Angle-of-approach — applies in topic mode to BOTH LinkedIn and blog (the
+    // angle reframes the long-form article server-side). Comment angle requires a
+    // stance note; guard before the fetch, mirroring the articleTooShort guard.
     if (mode === "topic" && angle) {
       if (angle === "comment" && stance.note.trim().length === 0) {
         setError(t("angle.commentNoteRequired"));
@@ -270,19 +440,34 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     }
 
     const data = (await res.json()) as GenerateResponse;
+    const platform = data.platform ?? "linkedin";
+    const isBlog = platform === "hosted";
+    // Did the editor's post format change with this generation? (postPlatform
+    // here is still the PREVIOUS post — setPostPlatform below applies next render.)
+    const switchedFormat = (postPlatform === "hosted") !== isBlog;
     setContent(data.content);
     setOriginalContent(data.content);
     setPostId(data.post_id);
+    setPostPlatform(platform);
     setStatus(data.status);
+    setExcerpt(data.excerpt ?? "");
     setStage("ready");
     // Capture grounding for the editor-header chip — only when an angle drove
-    // this draft (non-angle drafts have no source provenance to surface).
+    // this draft (non-angle drafts, incl. blog, have no source provenance).
     setDraftGrounding(
-      mode === "topic" && angle
+      !isBlog && mode === "topic" && angle
         ? { grounded: data.grounded, source: data.source }
         : null,
     );
-    if (!title) {
+    // Blog returns a real title — use it (overwrite, since regenerating a blog
+    // should refresh the title). LinkedIn has no real title field: fill from the
+    // first line when the box is empty OR when we just switched away from a blog
+    // (so a stale blog title doesn't bleed into a LinkedIn draft). `title` here
+    // is the previous render's value, hence the switchedFormat guard.
+    if (isBlog && data.title) {
+      setTitle(data.title);
+      setOriginalTitle(data.title);
+    } else if (!isBlog && (switchedFormat || !title)) {
       const firstLine = data.content.split("\n").find((l) => l.trim()) ?? "";
       setTitle(firstLine.slice(0, 80));
     }
@@ -300,13 +485,14 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     setError(null);
     setStage("saving");
     startTransition(async () => {
-      const result = await saveDraft(postId, content);
+      const result = await saveDraft(postId, content, editorIsBlog ? title : undefined);
       if (!result.ok) {
         setError(result.error);
         setStage("error");
         return;
       }
       setOriginalContent(content);
+      if (editorIsBlog) setOriginalTitle(title);
       setStage("saved");
     });
   }
@@ -382,13 +568,14 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
     // Save first if dirty — publish what's on screen, not what's in DB.
     if (dirty) {
       setStage("saving");
-      const saveResult = await saveDraft(postId, content);
+      const saveResult = await saveDraft(postId, content, editorIsBlog ? title : undefined);
       if (!saveResult.ok) {
         setError(saveResult.error);
         setStage("error");
         return;
       }
       setOriginalContent(content);
+      if (editorIsBlog) setOriginalTitle(title);
     }
 
     setStage("publishing");
@@ -423,9 +610,10 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
       : postId
         ? t("regenerate")
         : t("generate");
-  // Append the active angle's short label when one is selected (topic mode).
+  // Append the active angle's short label when one is selected (topic mode) —
+  // but not while generating, where the status label is already long.
   const generateLabel =
-    mode === "topic" && angle
+    stage !== "generating" && mode === "topic" && angle
       ? `${baseGenerateLabel} · ${t(`angle.${angle}.label`)}`
       : baseGenerateLabel;
 
@@ -438,7 +626,10 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
         overflow: "hidden",
       }}
     >
-      {/* LEFT — prompt / article settings panel (fixed, does not collapse) */}
+      {/* LEFT — generation rail. Hidden in edit mode: editing an existing post
+          is not generation, so the topic/angle/channel/generate controls don't
+          apply (Codex: edit mode locks platform + disables regenerate). */}
+      {!isEditing && (
       <aside
         style={{
           width: "var(--writer-left-w)",
@@ -542,21 +733,29 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           >
             {(["topic", "article"] as const).map((m) => {
               const active = mode === m;
+              // Blog is topic-only — the article (source-adapt) tab is for
+              // LinkedIn. Disable it while Blog is the selected channel.
+              const disabled = busy || (selectorIsBlog && m === "article");
               return (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMode(m)}
-                  disabled={busy}
+                  disabled={disabled}
                   style={{
                     height: 26,
                     background: active ? "var(--raised)" : "transparent",
                     border: 0,
-                    color: active ? "var(--ink)" : "var(--ink-muted)",
+                    color: active
+                      ? "var(--ink)"
+                      : disabled
+                        ? "var(--ink-faint)"
+                        : "var(--ink-muted)",
                     fontSize: 12,
                     fontWeight: 500,
                     borderRadius: 4,
-                    cursor: busy ? "not-allowed" : "pointer",
+                    cursor: disabled ? "not-allowed" : "pointer",
+                    opacity: disabled && !active ? 0.55 : 1,
                   }}
                 >
                   {t(m === "topic" ? "modeTopic" : "modeArticle")}
@@ -605,26 +804,18 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           )}
         </Section>
 
-        <Section title={t("channel")}>
+        {/* Channel selection moved to the rail (the content kitchen). Length
+            stays. The writer always produces the blog article (the foundation);
+            the rail picks fan-out destinations. */}
+        <Section title={t("length")} right={t("lengthApprox")}>
           <Segmented
             options={[
-              { label: "LinkedIn", value: "linkedin", icon: <LinkedInIcon /> },
-              { label: t("channelBlog"), value: "blog", disabled: true },
-              { label: "X", value: "x", disabled: true },
+              { label: t("lengthShort"), value: "short", disabled: true },
+              { label: t("lengthMedium"), value: "medium" },
+              { label: t("lengthLong"), value: "long", disabled: true },
             ]}
-            value="linkedin"
+            value="medium"
           />
-          <div style={{ marginTop: 14 }}>
-            <Caption right={t("lengthApprox")}>{t("length")}</Caption>
-            <Segmented
-              options={[
-                { label: t("lengthShort"), value: "short", disabled: true },
-                { label: t("lengthMedium"), value: "medium" },
-                { label: t("lengthLong"), value: "long", disabled: true },
-              ]}
-              value="medium"
-            />
-          </div>
         </Section>
 
         <Section>
@@ -633,7 +824,16 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
             disabled={busy || !canGenerate}
             style={primaryButton(busy || !canGenerate, 40)}
           >
-            {generateLabel}
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
+            >
+              {generateLabel}
+            </span>
           </button>
           {error && (
             <div
@@ -665,6 +865,7 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           </div>
         </Section>
       </aside>
+      )}
 
       {/* CENTER — editor (the main workspace; more context will live here) */}
       <main
@@ -677,6 +878,13 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           minWidth: 0,
         }}
       >
+        {/* Kitchen: a non-blog channel takes over the center — the article as it
+            looks on that channel, with the Preview/Edit toggle. The blog itself
+            keeps the normal editor below. */}
+        {kitchenSource && kitchenActive !== "hosted" ? (
+          <KitchenCenter mode={kitchenViewMode} onModeChange={setKitchenViewMode} betaAccess={betaAccess} sourceTitle={title} />
+        ) : (
+          <>
         <div
           style={{
             display: "flex",
@@ -688,29 +896,46 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
             flexShrink: 0,
           }}
         >
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={t("untitledPost")}
-            style={{
-              flex: 1,
-              background: "transparent",
-              border: 0,
-              outline: "none",
-              fontFamily: "var(--font-sans)",
-              fontSize: 18,
-              fontWeight: 600,
-              color: "var(--ink)",
-              letterSpacing: "-0.01em",
-              padding: 0,
-              minWidth: 0,
-            }}
-          />
+          {blogHasContent && (
+            <SegToggle
+              mode={kitchenViewMode}
+              onChange={setKitchenViewMode}
+              previewLabel={t("kitchen.preview")}
+              editLabel={t("kitchen.edit")}
+            />
+          )}
+          {editorIsBlog ? (
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              readOnly={lockedPublished || blogPreview}
+              placeholder={t("untitledPost")}
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: 0,
+                outline: "none",
+                fontFamily: "var(--font-sans)",
+                fontSize: 18,
+                fontWeight: 600,
+                color: "var(--ink)",
+                letterSpacing: "-0.01em",
+                padding: 0,
+                minWidth: 0,
+              }}
+            />
+          ) : (
+            // Social posts have no title — keep a spacer so the badge/counter
+            // stay pinned right.
+            <span style={{ flex: 1 }} />
+          )}
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <Badge variant="neutral">LINKEDIN</Badge>
+            <Badge variant="neutral">{editorIsBlog ? "BLOG" : "LINKEDIN"}</Badge>
             {draftGrounding && <GroundingChip grounding={draftGrounding} />}
             <span style={mono(12, overLimit ? "var(--risky)" : "var(--ink-faint)")}>
-              {t("charsCounter", { current: charCount, max: LINKEDIN_MAX })}
+              {editorIsBlog
+                ? format.number(charCount)
+                : t("charsCounter", { current: charCount, max: LINKEDIN_MAX })}
             </span>
             {dirty && (
               <span style={mono(12, "var(--borderline)")}>{t("unsaved")}</span>
@@ -718,7 +943,7 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
           </div>
         </div>
 
-        <Toolbar />
+        {!blogPreview && <Toolbar />}
 
         <div
           style={{
@@ -730,11 +955,61 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
         >
           {!postId && !content.trim() ? (
             <EmptyComposer />
+          ) : blogPreview ? (
+            editorIsBlog ? (
+              // Blog Preview: the polished "published article" card — same look
+              // as the right-rail preview (BlogPreviewCard), sized for the center.
+              <div style={{ maxWidth: "var(--editor-max-w)", margin: "0 auto" }}>
+                <BlogPreviewCard
+                  size="lg"
+                  title={title}
+                  meta={excerpt}
+                  body={content}
+                />
+              </div>
+            ) : (
+              // Social post preview: the platform-native card — same polished
+              // look as the right-rail preview, centered at native feed width.
+              <div style={{ maxWidth: 560, margin: "0 auto" }}>
+                {socialAdapted.platform === "telegram" ? (
+                  <TelegramPreviewCard
+                    brandName={brandName}
+                    html={socialAdapted.text}
+                    asCaption={socialAdapted.asCaption}
+                  />
+                ) : socialAdapted.platform === "linkedin" ? (
+                  <LinkedInPreviewCard
+                    brandName={brandName}
+                    text={socialAdapted.text}
+                    firstComment={socialAdapted.firstComment}
+                  />
+                ) : (
+                  <article className="writer-blog-preview">
+                    <BlogBody source={content} />
+                  </article>
+                )}
+              </div>
+            )
           ) : (
-            <div style={{ maxWidth: "var(--editor-max-w)", margin: "0 auto" }}>
+            // Writing surface: a subtle card (not floating text) so it's obvious
+            // this is the editable field. Read-only when the post is published.
+            <div
+              style={{
+                maxWidth: "var(--editor-max-w)",
+                margin: "0 auto",
+                background: lockedPublished ? "transparent" : "var(--surface)",
+                border: lockedPublished
+                  ? "1px solid transparent"
+                  : "1px solid var(--border-subtle)",
+                borderRadius: 10,
+                padding: "20px 24px",
+                cursor: lockedPublished ? "default" : "text",
+              }}
+            >
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
+                readOnly={lockedPublished}
                 rows={20}
                 placeholder={t("draftPlaceholder")}
                 style={{
@@ -746,9 +1021,33 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
                   fontFamily: "var(--font-sans)",
                   fontSize: 16,
                   lineHeight: 1.65,
-                  color: "var(--ink)",
+                  color: lockedPublished ? "var(--ink-muted)" : "var(--ink)",
                   letterSpacing: "-0.005em",
                   minHeight: 400,
+                }}
+              />
+            </div>
+          )}
+
+          {/* Editorial Memory — shows for any persisted post (freshly generated
+              OR opened), beta-gated, not on a published post, not in Preview.
+              postId is set only after the generate API saved the post, so the
+              refine route always has a real DB row to diff against. Disabled
+              while the editor is dirty: refine diffs against the SAVED body, so
+              applying a rewrite over unsaved edits would clobber them. Applying
+              pushes the new body back via onApplied (the writer owns the live
+              editor). */}
+          {betaAccess && !lockedPublished && postId && !blogPreview && (
+            <div style={{ maxWidth: "var(--editor-max-w)", margin: "8px auto 0" }}>
+              <EditorialPanel
+                postId={postId}
+                brandId={brandId}
+                currentContent={content}
+                disabled={dirty}
+                disabledHint={t("editorialDirtyHint")}
+                onApplied={(newBody) => {
+                  setContent(newBody);
+                  setOriginalContent(newBody);
                 }}
               />
             </div>
@@ -768,13 +1067,15 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
         >
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <span style={mono(11, "var(--ink-faint)")}>
-              {status === null
-                ? t("statusNotSaved")
-                : stage === "saving"
-                  ? t("statusSaving")
-                  : dirty
-                    ? t("statusEdited")
-                    : t("statusSaved")}
+              {lockedPublished
+                ? t("published")
+                : status === null
+                  ? t("statusNotSaved")
+                  : stage === "saving"
+                    ? t("statusSaving")
+                    : dirty
+                      ? t("statusEdited")
+                      : t("statusSaved")}
             </span>
           </div>
           <div
@@ -787,7 +1088,7 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
               justifyContent: "flex-end",
             }}
           >
-            {publishedUrl && stage === "published" && (
+            {publishedUrl && lockedPublished && (
               <a
                 href={publishedUrl}
                 target="_blank"
@@ -820,7 +1121,7 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
                 {t("undo")}
               </button>
             )}
-            {postId && (
+            {postId && !lockedPublished && (
               <button
                 onClick={onHumanize}
                 disabled={busy || !content.trim()}
@@ -830,7 +1131,7 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
                 {stage === "humanizing" ? t("humanizing") : t("rehumanize")}
               </button>
             )}
-            {postId && (
+            {postId && !lockedPublished && (
               <button
                 onClick={onSave}
                 disabled={busy || isPending || !dirty}
@@ -839,20 +1140,23 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
                 {stage === "saved" && !dirty ? t("saved") : t("saveDraft")}
               </button>
             )}
+            {/* Hidden once lockedPublished (incl. just-published this session),
+                so the stage==="published" label/disabled are unreachable here —
+                the published link above takes over. */}
+            {!lockedPublished && (
             <button
               onClick={onPublish}
-              disabled={!postId || busy || stage === "published"}
-              style={primaryButton(!postId || busy || stage === "published", 32)}
+              disabled={!postId || busy}
+              style={primaryButton(!postId || busy, 32)}
             >
-              {stage === "publishing"
-                ? t("publishing")
-                : stage === "published"
-                  ? t("published")
-                  : t("publish")}
+              {stage === "publishing" ? t("publishing") : t("publish")}
               <PublishMark stage={stage} />
             </button>
+            )}
           </div>
         </footer>
+          </>
+        )}
       </main>
 
       {/* RIGHT — live LinkedIn preview (collapsible to the right edge) */}
@@ -860,6 +1164,9 @@ export function WriterClient({ brandId, brandName, brandConfig }: Props) {
         <LivePreview
           brandName={brandName}
           content={content}
+          isBlog={editorIsBlog}
+          blogTitle={title}
+          blogExcerpt={excerpt}
           onClose={() => setPreviewOpen(false)}
         />
       ) : (
@@ -1247,14 +1554,6 @@ function Toolbar() {
   );
 }
 
-function LinkedInIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20.4 3H3.6C3.3 3 3 3.3 3 3.6v16.8c0 .3.3.6.6.6h16.8c.3 0 .6-.3.6-.6V3.6c0-.3-.3-.6-.6-.6ZM8.3 18.3H5.6V9.7h2.7v8.6Zm-1.3-9.8a1.6 1.6 0 1 1 0-3.2 1.6 1.6 0 0 1 0 3.2Zm11.4 9.8h-2.7v-4.2c0-1 0-2.3-1.4-2.3s-1.6 1.1-1.6 2.2v4.3h-2.7V9.7h2.6V11h0a2.8 2.8 0 0 1 2.6-1.4c2.7 0 3.2 1.8 3.2 4.1v4.6Z" />
-    </svg>
-  );
-}
-
 /* ─── style helpers ───────────────────────────────────────────────────── */
 
 function caption(): React.CSSProperties {
@@ -1316,6 +1615,7 @@ function primaryButton(disabled: boolean, height: number): React.CSSProperties {
     gap: 6,
     padding: "0 16px",
     whiteSpace: "nowrap",
+    overflow: "hidden",
     borderRadius: 9999,
     fontSize: height >= 40 ? 14 : 13,
     fontWeight: 500,
@@ -1468,10 +1768,16 @@ function EmptyComposer() {
 function LivePreview({
   brandName,
   content,
+  isBlog,
+  blogTitle,
+  blogExcerpt,
   onClose,
 }: {
   brandName: string;
   content: string;
+  isBlog: boolean;
+  blogTitle: string;
+  blogExcerpt: string;
   onClose: () => void;
 }) {
   const t = useTranslations("writer");
@@ -1485,6 +1791,9 @@ function LivePreview({
     telegram: "Telegram",
     blog: "Blog",
   };
+  // A blog article carries its own title + excerpt fields, so render them
+  // directly — the rule-based blog adapter would fabricate an H1 from the first
+  // body line, which conflicts with the real title.
   const adapted = useMemo(
     () => adaptFor(platform, { text: content }),
     [platform, content],
@@ -1538,17 +1847,26 @@ function LivePreview({
           overflowX: "auto",
         }}
       >
-        {livePlatforms.map((p) => (
-          <PreviewTab
-            key={p}
-            label={platformLabel[p]}
-            active={p === platform}
-            onClick={() => setPlatform(p)}
-          />
-        ))}
-        {soonTabs.map((p) => (
-          <PreviewTab key={p} label={p} soon={t("previewSoon")} />
-        ))}
+        {isBlog ? (
+          // The post IS a blog article — a single, fixed destination. No
+          // cross-platform tabs (a LinkedIn preview of a 2000-word article is
+          // meaningless).
+          <PreviewTab label={platformLabel.blog} active />
+        ) : (
+          <>
+            {livePlatforms.map((p) => (
+              <PreviewTab
+                key={p}
+                label={platformLabel[p]}
+                active={p === platform}
+                onClick={() => setPlatform(p)}
+              />
+            ))}
+            {soonTabs.map((p) => (
+              <PreviewTab key={p} label={p} soon={t("previewSoon")} />
+            ))}
+          </>
+        )}
       </div>
       <div
         style={{
@@ -1559,30 +1877,34 @@ function LivePreview({
         }}
       >
         {hasContent ? (
-          <>
-            {adapted.platform === "linkedin" && (
-              <LinkedInPreviewCard
-                brandName={brandName}
-                text={adapted.text}
-                firstComment={adapted.firstComment}
-              />
-            )}
-            {adapted.platform === "telegram" && (
-              <TelegramPreviewCard
-                brandName={brandName}
-                html={adapted.text}
-                asCaption={adapted.asCaption}
-              />
-            )}
-            {adapted.platform === "blog" && (
-              <BlogPreviewCard
-                title={adapted.title}
-                meta={adapted.metaDescription}
-                body={adapted.bodyMarkdown}
-              />
-            )}
-            <PreviewWarnings warnings={adapted.warnings} />
-          </>
+          isBlog ? (
+            <BlogPreviewCard title={blogTitle} meta={blogExcerpt} body={content} />
+          ) : (
+            <>
+              {adapted.platform === "linkedin" && (
+                <LinkedInPreviewCard
+                  brandName={brandName}
+                  text={adapted.text}
+                  firstComment={adapted.firstComment}
+                />
+              )}
+              {adapted.platform === "telegram" && (
+                <TelegramPreviewCard
+                  brandName={brandName}
+                  html={adapted.text}
+                  asCaption={adapted.asCaption}
+                />
+              )}
+              {adapted.platform === "blog" && (
+                <BlogPreviewCard
+                  title={adapted.title}
+                  meta={adapted.metaDescription}
+                  body={adapted.bodyMarkdown}
+                />
+              )}
+              <PreviewWarnings warnings={adapted.warnings} />
+            </>
+          )
         ) : (
           <PreviewPlaceholder text={t("previewEmpty")} />
         )}
@@ -1813,35 +2135,41 @@ function TelegramPreviewCard({
   );
 }
 
-// Blog article preview: title tag, meta description, and body. Markdown body
-// is shown as source (faithful enough for a preview; full render is polish).
+// Blog article preview: white "published article" card — title, meta line, body.
+// `size="lg"` (used in the center preview) scales the card up for a wide column
+// and gives the markdown real article typography (see .blog-preview-body-lg in
+// globals.css); the default `sm` keeps the compact right-rail look unchanged.
 function BlogPreviewCard({
   title,
   meta,
   body,
+  size = "sm",
 }: {
   title: string;
   meta: string;
   body: string;
+  size?: "sm" | "lg";
 }) {
+  const lg = size === "lg";
   return (
     <div
       style={{
         background: "#fff",
         color: "#0a0a0a",
-        borderRadius: 12,
-        padding: 18,
+        borderRadius: lg ? 16 : 12,
+        padding: lg ? "44px 48px" : 18,
         boxShadow: "0 16px 40px -12px rgba(0,0,0,0.5)",
         marginTop: 8,
       }}
     >
       <h3
         style={{
-          margin: "0 0 6px",
+          margin: lg ? "0 0 10px" : "0 0 6px",
           fontFamily: "Georgia, serif",
-          fontSize: 18,
+          fontSize: lg ? 30 : 18,
           fontWeight: 700,
-          lineHeight: 1.25,
+          lineHeight: lg ? 1.18 : 1.25,
+          letterSpacing: lg ? "-0.01em" : undefined,
           color: "#0a0a0a",
         }}
       >
@@ -1849,25 +2177,28 @@ function BlogPreviewCard({
       </h3>
       <div
         style={{
-          fontSize: 11,
+          fontSize: lg ? 12.5 : 11,
           color: "#6a6a6a",
-          marginBottom: 12,
+          marginBottom: lg ? 24 : 12,
           fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
         }}
       >
         meta · {meta || "—"}
       </div>
       <div
+        className={lg ? "blog-preview-body-lg" : "writer-blog-preview"}
         style={{
-          fontSize: 13,
-          lineHeight: 1.6,
-          color: "#1a1a1a",
-          whiteSpace: "pre-wrap",
+          fontSize: lg ? 16.5 : 13,
+          lineHeight: lg ? 1.72 : 1.6,
+          color: lg ? "#222" : "#1a1a1a",
           overflowWrap: "anywhere",
           fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
         }}
       >
-        {body}
+        {/* Render markdown the SAME way the published /p/ page does (react-markdown
+            + remark-gfm) so the preview shows real headings/tables/rules instead
+            of raw `##` and `|` pipes. */}
+        <BlogBody source={body} />
       </div>
     </div>
   );

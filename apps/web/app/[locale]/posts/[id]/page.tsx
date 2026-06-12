@@ -6,6 +6,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
+import { getPostBody } from "@/lib/post-body";
 import { PostEditor } from "./post-editor";
 import { StatusBadge } from "../status-badge";
 
@@ -29,7 +30,7 @@ export default async function PostDetailPage({ params }: PageProps) {
   const { data: post } = await supabase
     .from("posts")
     .select(
-      "id, brand_id, platform, content_text, status, detection_score, external_post_url, created_at, published_at",
+      "id, brand_id, platform, content_text, content_markdown, status, detection_score, external_post_url, created_at, published_at",
     )
     .eq("id", postId)
     .maybeSingle();
@@ -133,11 +134,9 @@ export default async function PostDetailPage({ params }: PageProps) {
 
         <PostEditor
           postId={post.id}
-          brandId={post.brand_id}
-          initialContent={post.content_text ?? ""}
+          initialContent={getPostBody(post)}
           status={post.status}
           externalUrl={post.external_post_url}
-          betaAccess={account?.beta_access === true}
         />
       </section>
     </AppShell>

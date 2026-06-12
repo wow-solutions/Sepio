@@ -14,6 +14,7 @@ import { z } from "zod";
 // update both). Pure function test — no HTTP needed.
 const RequestSchema = z.object({
   brand_id: z.string().uuid(),
+  format: z.enum(["linkedin_post", "blog"]).default("linkedin_post"),
   topic_hint: z.string().max(500).optional(),
   source_text: z.string().min(50).max(30_000).optional(),
   topic_candidate_id: z.string().uuid().optional(),
@@ -102,6 +103,30 @@ describe("/api/posts/generate RequestSchema", () => {
       topic_candidate_id: VALID_UUID,
     });
     expect(result.success).toBe(true);
+  });
+
+  test("format defaults to linkedin_post when omitted (back-compat)", () => {
+    const result = RequestSchema.safeParse({ brand_id: VALID_UUID });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.format).toBe("linkedin_post");
+  });
+
+  test("accepts format: blog", () => {
+    const result = RequestSchema.safeParse({
+      brand_id: VALID_UUID,
+      format: "blog",
+      topic_hint: "humidity control for data centers",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.format).toBe("blog");
+  });
+
+  test("rejects an unknown format", () => {
+    const result = RequestSchema.safeParse({
+      brand_id: VALID_UUID,
+      format: "tiktok",
+    });
+    expect(result.success).toBe(false);
   });
 
   test("rejects empty body (no brand_id)", () => {

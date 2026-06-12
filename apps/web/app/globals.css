@@ -514,3 +514,59 @@
 .posts-row:hover {
   border-color: rgba(176, 123, 80, 0.28);
 }
+
+/* Center blog preview card (writer "Preview" mode). The card itself is styled
+   inline in BlogPreviewCard; this scopes the react-markdown body so headings,
+   paragraphs, lists and tables get real article spacing instead of Tailwind
+   preflight's flattened margins. Scoped to the lg (center) variant only — the
+   compact right-rail preview is untouched. em units scale off the card's base
+   font-size; colors are dark-on-white (the card is #fff). */
+.blog-preview-body-lg > :first-child { margin-top: 0; }
+.blog-preview-body-lg p { margin: 0 0 1em; }
+.blog-preview-body-lg h2 {
+  margin: 1.5em 0 0.5em;
+  font-size: 1.5em;
+  font-weight: 700;
+  line-height: 1.25;
+  font-family: Georgia, serif;
+  letter-spacing: -0.01em;
+}
+.blog-preview-body-lg h3 {
+  margin: 1.3em 0 0.4em;
+  font-size: 1.22em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.blog-preview-body-lg ul,
+.blog-preview-body-lg ol { margin: 0.8em 0 1em 1.4em; }
+.blog-preview-body-lg li { margin: 0.35em 0; }
+.blog-preview-body-lg strong { font-weight: 700; }
+.blog-preview-body-lg a { color: #6b4226; text-decoration: underline; }
+.blog-preview-body-lg blockquote {
+  margin: 1.2em 0;
+  padding-left: 1em;
+  border-left: 3px solid #d8d2c8;
+  color: #555;
+}
+.blog-preview-body-lg table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.2em 0;
+  font-size: 0.92em;
+}
+.blog-preview-body-lg th,
+.blog-preview-body-lg td {
+  border: 1px solid #e1ddd5;
+  padding: 7px 11px;
+  text-align: left;
+  vertical-align: top;
+}
+.blog-preview-body-lg th { background: #f6f3ee; font-weight: 700; }
+.blog-preview-body-lg hr { border: 0; border-top: 1px solid #e1ddd5; margin: 1.6em 0; }
+.blog-preview-body-lg code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.88em;
+  background: #f2efe9;
+  padding: 1px 5px;
+  border-radius: 4px;
+}

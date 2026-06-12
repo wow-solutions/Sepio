@@ -5,10 +5,16 @@ import {
   generatePost,
   adaptToLinkedIn,
   generatePostFromUserMessage,
+  generateBlogArticle,
   ClaudeError,
 } from "@/lib/claude";
+import { parseBlogArticleOutput } from "@/lib/_private/blog-article";
 import { ANGLE_IDS, ANGLES_USING_ARTICLE } from "@/lib/angles-shared";
-import type { Json } from "@/lib/supabase/database.types";
+import type {
+  Json,
+  Database,
+  TablesInsert,
+} from "@/lib/supabase/database.types";
 import { buildAngleUserText } from "@/lib/_private/angles";
 import {
   fetchArticleExtract,
@@ -47,6 +53,10 @@ import {
 //   - topic_hint: legacy free-text input
 const RequestSchema = z.object({
   brand_id: z.string().uuid(),
+  // Output format (kitchen). 'linkedin_post' (default) keeps the existing
+  // behavior; 'blog' generates a long-form article published to platform
+  // 'hosted'. Topic-only for now — no source_text/angle/stance.
+  format: z.enum(["linkedin_post", "blog"]).default("linkedin_post"),
   topic_hint: z.string().max(500).optional(),
   source_text: z.string().min(50).max(30_000).optional(),
   topic_candidate_id: z.string().uuid().optional(),
@@ -89,8 +99,26 @@ export async function POST(request: Request): Promise<Response> {
       400,
     );
   }
-  const { brand_id, topic_hint, source_text, topic_candidate_id, angle, stance } =
-    parsed.data;
+  const {
+    brand_id,
+    format,
+    topic_hint,
+    source_text,
+    topic_candidate_id,
+    angle,
+    stance,
+  } = parsed.data;
+
+  // Blog is topic-only on the SOURCE side: it does not support the
+  // LinkedIn-specific source_text adapt. Angle/stance ARE supported — the angle
+  // reframes the long-form article; the comment angle carries a stance (validated
+  // just below, shared with the LinkedIn path). Fail fast before any DB/Claude.
+  if (format === "blog" && source_text) {
+    return jsonError(
+      { error: "Blog format takes a topic, not source_text" },
+      400,
+    );
+  }
 
   // Angle/stance cross-field validation (frozen contract). Done before any DB
   // work or Claude call so a malformed request fails fast with 400.
@@ -223,6 +251,137 @@ export async function POST(request: Request): Promise<Response> {
     ...differentiationContextBlocks(diffErr ? null : diffRow),
     ...renderVoiceNoteBlocks(rules),
   ];
+
+  // ── Blog article branch (kitchen slice 1) ─────────────────────────────────
+  // Same engine, brand voice, and moat (Market Brain + Editorial Memory via
+  // configForGen + extraContext) as the LinkedIn path below — only the format
+  // spec (Sonnet long-form), the parse, and the insert differ. Returns early so
+  // the LinkedIn machinery (angles/source-hydration/Pangram/detection_dataset)
+  // never runs for a blog. Published later to platform 'hosted'.
+  if (format === "blog") {
+    const brief = effectiveTopicHint?.trim();
+    if (!brief) {
+      return jsonError({ error: "A topic is required for a blog article" }, 400);
+    }
+
+    let blog;
+    try {
+      blog = await generateBlogArticle(
+        configForGen,
+        brand.primary_language,
+        brief,
+        { extraContext, angle, stance: effectiveStance },
+      );
+    } catch (err) {
+      const msg = err instanceof ClaudeError ? err.message : "Generate failed";
+      const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
+      return jsonError({ error: msg, stage: "generate" }, status);
+    }
+
+    const { title: parsedTitle, body, description } = parseBlogArticleOutput(
+      blog.text,
+    );
+    // hostedAdapter requires a non-empty title at publish; fall back to the
+    // brief if the model skipped the TITLE line. The user can edit it in the
+    // writer before publishing.
+    const title = parsedTitle ?? brief.slice(0, 200);
+
+    const initialStatus =
+      config.approval_mode === "auto" ? "draft" : "pending_approval";
+    const sourceType: "manual" | "auto_research" = topic_candidate_id
+      ? "auto_research"
+      : "manual";
+
+    // Markdown is canonical for a blog; content_text stays null (it's the
+    // LinkedIn short-text column — a 2000-word article does not belong there).
+    let postId: string;
+    if (topic_candidate_id) {
+      // Atomic insert + candidate-mark via the extended RPC (D12). content_text
+      // and detection_* are passed NULL explicitly — they precede the first
+      // DEFAULT param in the function signature, so they are required, not
+      // optional. slug is omitted (it has a default). database.types.ts lags the
+      // migration (T-types): the generated Args know neither the new article
+      // params nor the nullable content_text/detection_*, so cast through the
+      // generated Args type until the types are regenerated.
+      const rpcArgs = {
+        p_brand_id: brand_id,
+        p_platform: "hosted",
+        p_language: brand.primary_language,
+        p_content_text: null,
+        p_detection_score: null,
+        p_detection_breakdown: null,
+        p_status: initialStatus,
+        p_source_type: sourceType,
+        p_candidate_id: topic_candidate_id,
+        p_research_topic: resolvedCandidateText ?? undefined,
+        p_title: title,
+        p_excerpt: description ?? undefined,
+        p_content_markdown: body,
+      };
+      const { data: rpcPost, error: rpcErr } = await supabase.rpc(
+        "insert_post_and_mark_candidate",
+        rpcArgs as unknown as Database["public"]["Functions"]["insert_post_and_mark_candidate"]["Args"],
+      );
+      if (rpcErr || !rpcPost) {
+        return jsonError(
+          {
+            error: rpcErr?.message ?? "Failed to save article (RPC)",
+            stage: "save",
+          },
+          500,
+        );
+      }
+      const row = Array.isArray(rpcPost)
+        ? (rpcPost[0] as { id: string } | undefined)
+        : (rpcPost as { id: string });
+      if (!row?.id) {
+        return jsonError(
+          { error: "RPC returned no post id", stage: "save" },
+          500,
+        );
+      }
+      postId = row.id;
+    } else {
+      // title/slug/excerpt were added in 20260609120000; database.types.ts lags
+      // (T-types), so cast the row to the generated Insert type to include them.
+      const insertRow = {
+        brand_id,
+        platform: "hosted",
+        language: brand.primary_language,
+        content_text: null,
+        content_markdown: body,
+        title,
+        slug: null,
+        excerpt: description,
+        status: initialStatus,
+        source_type: sourceType,
+      };
+      const { data: post, error: postErr } = await supabase
+        .from("posts")
+        .insert(insertRow as unknown as TablesInsert<"posts">)
+        .select("id")
+        .single();
+      if (postErr || !post) {
+        return jsonError(
+          { error: postErr?.message ?? "Failed to save article", stage: "save" },
+          500,
+        );
+      }
+      postId = post.id;
+    }
+
+    return Response.json({
+      post_id: postId,
+      content: body,
+      platform: "hosted",
+      title,
+      excerpt: description,
+      status: initialStatus,
+      cache_read_tokens: blog.usage.cache_read_input_tokens,
+      grounded: false,
+      source: null,
+    });
+  }
 
   // Resolved article for the active angle (null = topic-gist framing). Used both
   // for the prompt and for the grounded/source response fields. Order:

@@ -1,12 +1,34 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { redirect } from "next/navigation";
 import { Link } from "@/i18n/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/app-shell";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { BrandDot } from "@/components/brand/brand-dot";
 import { brandColor } from "@/lib/brand-color";
-import { PostsList, type PostRow } from "./posts-list";
+import { getPostBody } from "@/lib/post-body";
+import { PostsList, type TopicGroup } from "./posts-list";
+
+// Untyped post row including the kitchen columns (T-types lag), read through an
+// untyped client (RLS still applies).
+type RawPost = {
+  id: string;
+  brand_id: string;
+  platform: string;
+  content_text: string | null;
+  content_markdown: string | null;
+  status: string;
+  external_post_url: string | null;
+  created_at: string;
+  published_at: string | null;
+  content_group_id: string | null;
+  source_post_id: string | null;
+  variant_state: string | null;
+  title: string | null;
+};
+
+const PREVIEW = 140;
 
 type PageProps = {
   searchParams: Promise<{ status?: string; brand?: string }>;
@@ -46,39 +68,78 @@ export default async function PostsPage({ searchParams }: PageProps) {
     .eq("id", user.id)
     .maybeSingle();
 
-  let q = supabase
+  // Kitchen columns aren't in the generated types yet (T-types lag) → untyped
+  // client. Brand filter stays SQL-side (a content_group is single-brand). The
+  // STATUS filter is applied per-GROUP below (any post matching), not in SQL —
+  // SQL-filtering by status would split groups into partial cards.
+  const db = supabase as unknown as SupabaseClient;
+  let q = db
     .from("posts")
     .select(
-      "id, brand_id, platform, content_text, status, detection_score, external_post_url, created_at, published_at",
+      "id, brand_id, platform, content_text, content_markdown, status, external_post_url, created_at, published_at, content_group_id, source_post_id, variant_state, title",
     )
     .order("created_at", { ascending: false })
-    .limit(100);
-
-  if (statusFilter !== "all") {
-    q = q.eq("status", statusFilter);
-  }
+    .limit(300);
   if (brandFilter) {
     q = q.eq("brand_id", brandFilter);
   }
   const { data: posts } = await q;
-  const list = posts ?? [];
+  const list = (posts as unknown as RawPost[] | null) ?? [];
 
-  const enriched: PostRow[] = list.map((p) => {
-    const brand = brandById.get(p.brand_id);
-    return {
-      id: p.id,
-      brandId: p.brand_id,
+  // Group by content_group_id; legacy/standalone posts get their own one-item
+  // group keyed by post id. One card per topic.
+  const byGroup = new Map<string, RawPost[]>();
+  for (const p of list) {
+    const key = p.content_group_id ?? `solo:${p.id}`;
+    const arr = byGroup.get(key);
+    if (arr) arr.push(p);
+    else byGroup.set(key, [p]);
+  }
+
+  let groups: TopicGroup[] = [];
+  for (const [key, rows] of byGroup) {
+    // Source = the post with no source_post_id (the blog); fall back to first.
+    const source = rows.find((r) => r.source_post_id === null) ?? rows[0];
+    const brand = brandById.get(source.brand_id);
+    const topic = (source.title ?? "").trim() || null;
+    const channels = rows
+      .map((r) => ({
+        platform: r.platform,
+        postId: r.id,
+        status: r.status,
+        externalPostUrl: r.external_post_url,
+      }))
+      // blog/source first, then the rest by platform name for a stable order
+      .sort((a, b) =>
+        a.platform === "hosted"
+          ? -1
+          : b.platform === "hosted"
+            ? 1
+            : a.platform.localeCompare(b.platform),
+      );
+    const latestDate = rows.reduce((max, r) => {
+      const d = r.published_at ?? r.created_at;
+      return d > max ? d : max;
+    }, rows[0].published_at ?? rows[0].created_at);
+    groups.push({
+      key,
+      topic,
+      preview: (getPostBody(source) ?? "").slice(0, PREVIEW) || null,
+      brandId: source.brand_id,
       brandName: brand?.name ?? "—",
       brandSlug: brand?.slug ?? null,
-      platform: p.platform,
-      contentText: p.content_text,
-      status: p.status,
-      detectionScore: p.detection_score,
-      externalPostUrl: p.external_post_url,
-      createdAt: p.created_at,
-      publishedAt: p.published_at,
-    };
-  });
+      sourcePostId: source.id,
+      channels,
+      statuses: [...new Set(rows.map((r) => r.status))],
+      latestDate,
+      postIds: rows.map((r) => r.id),
+    });
+  }
+  // Status filter: keep groups containing at least one matching post (ANY).
+  if (statusFilter !== "all") {
+    groups = groups.filter((g) => g.statuses.includes(statusFilter));
+  }
+  groups.sort((a, b) => (a.latestDate < b.latestDate ? 1 : -1));
 
   const switcherBrands: BrandOption[] = brands.map((b) => ({
     id: b.id,
@@ -209,10 +270,10 @@ export default async function PostsPage({ searchParams }: PageProps) {
           })}
         </div>
 
-        {list.length === 0 ? (
+        {groups.length === 0 ? (
           <EmptyState title={t("empty.title")} body={t("empty.body")} cta={t("empty.cta")} />
         ) : (
-          <PostsList posts={enriched} locale={locale} />
+          <PostsList groups={groups} locale={locale} />
         )}
       </section>
     </AppShell>

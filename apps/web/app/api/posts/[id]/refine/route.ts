@@ -21,6 +21,7 @@ import {
 } from "@/lib/brand-rules/rules-context";
 import { buildRefineResult } from "@/lib/brand-rules/refine-response";
 import { extractRule } from "@/lib/_private/rule-extractor";
+import { getPostBody } from "@/lib/post-body";
 
 export const maxDuration = 60; // two parallel LLM calls, latency = max not sum
 
@@ -55,10 +56,11 @@ export async function POST(
   }
   const { instruction } = parsed.data;
 
-  // Post (RLS owner read).
+  // Post (RLS owner read). Read both body columns + platform so a blog/hosted
+  // post (body in content_markdown) refines correctly, not just LinkedIn.
   const { data: post } = await supabase
     .from("posts")
-    .select("id, brand_id, content_text, status")
+    .select("id, brand_id, platform, content_text, content_markdown, status")
     .eq("id", postId)
     .maybeSingle();
   if (!post) return Response.json({ error: "Post not found" }, { status: 404 });
@@ -70,8 +72,8 @@ export async function POST(
       { status: 409 },
     );
   }
-  const original = post.content_text;
-  if (!original || !original.trim()) {
+  const original = getPostBody(post);
+  if (!original.trim()) {
     return Response.json({ error: "Post has no content to refine" }, { status: 400 });
   }
 

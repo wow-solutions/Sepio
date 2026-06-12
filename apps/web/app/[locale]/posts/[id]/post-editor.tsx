@@ -3,9 +3,13 @@
 import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
+import { Link } from "@/i18n/navigation";
 import { PublishButton } from "./publish-button";
-import { EditorialPanel } from "./editorial-panel";
-import { deletePost, updatePostContent } from "./actions";
+import { deletePost } from "./actions";
+
+// View-only post detail (kitchen slice 2). Editing — including the Editorial
+// Memory loop — moved to /writer?post=<id>, so this surface only reads, publishes,
+// and deletes. The "Edit in writer" link is the single entry point to editing.
 
 type FontChoice = "sans" | "serif" | "mono";
 
@@ -19,34 +23,25 @@ const FONT_VAR: Record<FontChoice, string> = {
 
 type Props = {
   postId: string;
-  brandId: string;
   initialContent: string;
   status: string;
   externalUrl: string | null;
-  betaAccess: boolean;
 };
 
 export function PostEditor({
   postId,
-  brandId,
   initialContent,
   status,
   externalUrl,
-  betaAccess,
 }: Props) {
   const t = useTranslations("posts.detail");
   const router = useRouter();
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(initialContent);
-  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [font, setFont] = useState<FontChoice>("sans");
-  const [pendingSave, startSave] = useTransition();
   const [pendingDelete, startDelete] = useTransition();
 
   const isPublished = status === "published";
   const canMutate = !isPublished;
-  const dirty = isEditing && draft.trim() !== initialContent.trim();
 
   useEffect(() => {
     const saved = window.localStorage.getItem(FONT_STORAGE_KEY);
@@ -58,25 +53,6 @@ export function PostEditor({
   function chooseFont(next: FontChoice) {
     setFont(next);
     window.localStorage.setItem(FONT_STORAGE_KEY, next);
-  }
-
-  function onSave() {
-    setSaveErr(null);
-    startSave(async () => {
-      const result = await updatePostContent(postId, draft);
-      if (result.ok) {
-        setIsEditing(false);
-        router.refresh();
-      } else {
-        setSaveErr(result.error);
-      }
-    });
-  }
-
-  function onDiscard() {
-    setDraft(initialContent);
-    setIsEditing(false);
-    setSaveErr(null);
   }
 
   function onDelete() {
@@ -93,8 +69,7 @@ export function PostEditor({
     });
   }
 
-  const currentLen = isEditing ? draft.length : initialContent.length;
-  const lenIndicator = describeLength(currentLen, t);
+  const lenIndicator = describeLength(initialContent.length, t);
 
   return (
     <>
@@ -117,11 +92,11 @@ export function PostEditor({
             color: lenIndicator.color,
           }}
         >
-          {currentLen} · {lenIndicator.label}
+          {initialContent.length} · {lenIndicator.label}
         </span>
       </div>
 
-      {/* Content area: read-only pre OR textarea */}
+      {/* Content area: read-only */}
       <article
         style={{
           background: "var(--surface)",
@@ -131,43 +106,21 @@ export function PostEditor({
           marginBottom: 16,
         }}
       >
-        {isEditing && canMutate ? (
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            autoFocus
-            style={{
-              width: "100%",
-              minHeight: 360,
-              fontFamily: FONT_VAR[font],
-              fontSize: 15,
-              lineHeight: 1.65,
-              color: "var(--ink)",
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              resize: "vertical",
-              padding: 0,
-            }}
-          />
-        ) : (
-          <pre
-            style={{
-              fontFamily: FONT_VAR[font],
-              fontSize: 15,
-              lineHeight: 1.65,
-              color: "var(--ink)",
-              margin: 0,
-              whiteSpace: "pre-wrap",
-              overflowWrap: "anywhere",
-            }}
-          >
-            {initialContent || ""}
-          </pre>
-        )}
+        <pre
+          style={{
+            fontFamily: FONT_VAR[font],
+            fontSize: 15,
+            lineHeight: 1.65,
+            color: "var(--ink)",
+            margin: 0,
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {initialContent || ""}
+        </pre>
       </article>
 
-      {saveErr && <ErrorBanner msg={saveErr} />}
       {deleteErr && <ErrorBanner msg={deleteErr} />}
 
       {/* Action row */}
@@ -188,36 +141,13 @@ export function PostEditor({
           >
             {t("viewOnLinkedIn")}
           </a>
-        ) : isEditing ? (
-          <>
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={!dirty || pendingSave}
-              style={primaryBtn(!dirty || pendingSave)}
-            >
-              {pendingSave ? t("saving") : t("save")}
-            </button>
-            <button
-              type="button"
-              onClick={onDiscard}
-              disabled={pendingSave}
-              style={ghostBtn(pendingSave)}
-            >
-              {t("discard")}
-            </button>
-          </>
         ) : (
           <>
             <PublishButton postId={postId} />
             {canMutate && (
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                style={ghostBtn(false)}
-              >
-                {t("edit")}
-              </button>
+              <Link href={`/writer?post=${postId}`} style={ghostBtn(false)}>
+                {t("editInWriter")}
+              </Link>
             )}
             {canMutate && (
               <button
@@ -232,14 +162,6 @@ export function PostEditor({
           </>
         )}
       </div>
-
-      {betaAccess && canMutate && !isEditing && (
-        <EditorialPanel
-          postId={postId}
-          brandId={brandId}
-          currentContent={initialContent}
-        />
-      )}
     </>
   );
 }

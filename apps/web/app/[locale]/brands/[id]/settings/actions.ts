@@ -13,6 +13,7 @@ type AllowedLanguage = (typeof ALLOWED_LANGUAGES)[number];
 type UpdateBasicsInput = {
   industryCategoryId: string | null;
   primaryLanguage: string;
+  additionalLanguages: string[];
   brandVoice: string;
 };
 
@@ -31,6 +32,19 @@ export async function updateBrandBasics(
   if (!ALLOWED_LANGUAGES.includes(input.primaryLanguage as AllowedLanguage)) {
     return { ok: false, error: "Invalid language" };
   }
+
+  // Allowlist: every entry must be a supported string; dedupe; exclude primary.
+  if (
+    !Array.isArray(input.additionalLanguages) ||
+    !input.additionalLanguages.every(
+      (l) => typeof l === "string" && ALLOWED_LANGUAGES.includes(l as AllowedLanguage),
+    )
+  ) {
+    return { ok: false, error: "Invalid additional language" };
+  }
+  const additionalLanguages = [...new Set(input.additionalLanguages)].filter(
+    (l) => l !== input.primaryLanguage,
+  );
 
   if (input.brandVoice.length > 5000) {
     return { ok: false, error: "brand_voice too long (max 5000)" };
@@ -59,6 +73,7 @@ export async function updateBrandBasics(
       industry_category_id: input.industryCategoryId,
       industry: displayName,
       primary_language: input.primaryLanguage,
+      additional_languages: additionalLanguages,
     })
     .eq("id", brandId);
 

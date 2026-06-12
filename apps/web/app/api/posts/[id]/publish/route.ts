@@ -1,45 +1,93 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
-import {
-  readLinkedInToken,
-  updateSecret,
-  VaultError,
-  type LinkedInToken,
-} from "@/lib/vault";
-import { publishMemberPost, LinkedInApiError } from "@/lib/linkedin-api";
-import {
-  refreshAccessToken,
-  fetchUserInfo,
-  LinkedInOAuthError,
-} from "@/lib/linkedin-oauth";
+import { adapters, type PublishablePost, type PublishOutcome } from "@/lib/publishers";
+import { publishToLinkedIn } from "@/lib/publishers/linkedin";
 
 // POST /api/posts/[id]/publish
 //
-// Publishes a draft post to the brand's connected LinkedIn personal account.
-// (ADR-0017 D6, deliverable 9.3)
-//
-// Flow:
-//   1. Auth + RLS-scoped post fetch
-//   2. Refuse if already published, or no LinkedIn connection on the brand
-//   3. Read tokens from Vault. If expires_at is past (with 60s buffer):
-//      refresh via refresh_token, write new tokens back to Vault
-//   4. If user_sub missing from Vault (token issued before that field
-//      existed), fetch /v2/userinfo and patch Vault
-//   5. POST to LinkedIn /v2/ugcPosts
-//   6. UPDATE posts row: status=published, external_post_id, external_post_url,
-//      published_at
-//   7. Return { url, urn } for the UI
+// Platform-agnostic publish DISPATCHER. Routes a post to the right adapter by
+// post.platform:
+//   linkedin  → publishToLinkedIn (extracted, unchanged behavior)
+//   hosted    → hostedAdapter      (Sepio-hosted blog /p/{brandId}/{slug} — universal fallback)
+//   wordpress → wordPressAdapter   (WP REST + Application Password from Vault)
+// All outcomes are audited in publish_attempts (best-effort). On success the
+// posts row is updated (status/external_post_id/external_post_url/published_at).
+// See wiki/architecture/posting-pipeline.md
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
 
-const REFRESH_BUFFER_MS = 60_000; // refresh if expiring within 1 minute
-
 type ErrorBody = { error: string; needsReconnect?: boolean };
-
 function jsonError(body: ErrorBody, status: number): Response {
   return NextResponse.json(body, { status });
+}
+
+// Local row type: posts.title/slug/excerpt/cover_image_alt were added in
+// migration 20260609120000; database.types.ts regen is pending, so we read
+// the row through an untyped client and shape it here.
+// TODO: regen database.types.ts, then drop the cast + local type.
+interface PostRow {
+  id: string;
+  brand_id: string;
+  platform: string;
+  language: string;
+  status: string;
+  title: string | null;
+  slug: string | null;
+  excerpt: string | null;
+  content_text: string | null;
+  content_markdown: string | null;
+  cover_image_url: string | null;
+  cover_image_alt: string | null;
+}
+
+// Release a claimed post back to 'failed'. Captures the supabase error (which
+// is not thrown) and logs loudly — if this fails the post is stranded in
+// 'publishing', a visible degraded state we want surfaced, not swallowed.
+async function markFailed(service: SupabaseClient, postId: string): Promise<void> {
+  try {
+    const { error } = await service.from("posts").update({ status: "failed" }).eq("id", postId);
+    if (error) {
+      console.error(`Could not reset post ${postId} to 'failed' (stuck 'publishing'):`, error.message);
+    }
+  } catch (err) {
+    console.error(`Reset of post ${postId} to 'failed' threw (stuck 'publishing'):`, err);
+  }
+}
+
+async function logPublishAttempt(
+  service: SupabaseClient,
+  p: {
+    post_id: string;
+    brand_id: string;
+    platform: string;
+    oauth_token_id: string | null;
+    outcome: PublishOutcome;
+  },
+): Promise<void> {
+  // Audit is non-critical: never fail the publish on a logging error.
+  try {
+    const { error } = await service.from("publish_attempts").upsert(
+      {
+        post_id: p.post_id,
+        brand_id: p.brand_id,
+        platform: p.platform,
+        oauth_token_id: p.oauth_token_id ?? null,
+        connection_id: null,
+        status: p.outcome.ok ? "success" : "failed",
+        error_message: p.outcome.ok ? null : p.outcome.message,
+        external_post_id: p.outcome.ok ? p.outcome.externalId : null,
+        succeeded_at: p.outcome.ok ? new Date().toISOString() : null,
+      },
+      { onConflict: "post_id,platform,connection_id,oauth_token_id" },
+    );
+    // supabase-js does not throw on DB errors — capture it explicitly.
+    if (error) console.error("publish_attempts log failed:", error.message);
+  } catch (err) {
+    console.error("publish_attempts log threw:", err);
+  }
 }
 
 export async function POST(
@@ -53,143 +101,170 @@ export async function POST(
   }
   const postId = parsed.data.id;
 
-  // 1. Auth + post (RLS-scoped, returns only posts whose brand belongs to user)
+  // 1. Auth + post (RLS-scoped). Untyped handle to read newly-added columns.
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return jsonError({ error: "Not signed in" }, 401);
 
-  const { data: post } = await supabase
+  const db = supabase as unknown as SupabaseClient;
+  const { data: postData } = await db
     .from("posts")
-    .select("id, brand_id, content_text, status, platform")
+    .select(
+      "id, brand_id, platform, language, status, title, slug, excerpt, content_text, content_markdown, cover_image_url, cover_image_alt",
+    )
     .eq("id", postId)
     .maybeSingle();
+  const post = postData as PostRow | null;
   if (!post) return jsonError({ error: "Post not found" }, 404);
   if (post.status === "published") {
     return jsonError({ error: "Post already published" }, 409);
   }
-  if (post.platform !== "linkedin") {
-    return jsonError({ error: `Platform ${post.platform} not yet supported` }, 400);
-  }
-  if (!post.content_text || !post.content_text.trim()) {
-    return jsonError({ error: "Post content is empty" }, 400);
-  }
 
-  // 2. LinkedIn token row (service-role read — RLS allows user-scoped but
-  // we'll also need to update it on refresh)
+  const publishable: PublishablePost = {
+    id: post.id,
+    brand_id: post.brand_id,
+    platform: post.platform,
+    language: post.language,
+    title: post.title,
+    slug: post.slug,
+    excerpt: post.excerpt,
+    content_text: post.content_text,
+    content_markdown: post.content_markdown,
+    cover_image_url: post.cover_image_url,
+    cover_image_alt: post.cover_image_alt,
+  };
+
+  // 2. Resolve the destination + credentials BEFORE claiming. Early returns
+  //    here must not leave the post stuck in 'publishing'.
   const service = createServiceRoleClient();
-  const { data: tokenRow } = await service
-    .from("brand_oauth_tokens")
-    .select("id, vault_secret_id, expires_at, status")
-    .eq("brand_id", post.brand_id)
-    .eq("platform", "linkedin")
-    .maybeSingle();
+  let oauthTokenId: string | null = null;
+  let wpVaultSecretId: string | null = null;
 
-  if (!tokenRow || !tokenRow.vault_secret_id) {
-    return jsonError(
-      { error: "LinkedIn is not connected for this brand", needsReconnect: true },
-      400,
-    );
-  }
-  if (tokenRow.status !== "active") {
-    return jsonError(
-      { error: `LinkedIn connection status is ${tokenRow.status}`, needsReconnect: true },
-      400,
-    );
-  }
-
-  // 3. Read token from Vault
-  let token: LinkedInToken;
-  try {
-    token = await readLinkedInToken(tokenRow.vault_secret_id);
-  } catch (err) {
-    const msg = err instanceof VaultError ? err.message : "Vault read failed";
-    return jsonError({ error: msg }, 500);
-  }
-
-  // 4. Refresh if near expiry
-  const expiresMs = new Date(token.expires_at).getTime();
-  if (Number.isFinite(expiresMs) && expiresMs - Date.now() < REFRESH_BUFFER_MS) {
-    if (!token.refresh_token) {
+  if (post.platform === "linkedin") {
+    if (!post.content_text || !post.content_text.trim()) {
+      return jsonError({ error: "Post content is empty" }, 400);
+    }
+  } else if (post.platform === "hosted") {
+    // no pre-resolution needed
+  } else if (post.platform === "wordpress") {
+    const { data: wp } = await service
+      .from("brand_oauth_tokens")
+      .select("id, vault_secret_id, status")
+      .eq("brand_id", post.brand_id)
+      .eq("platform", "wordpress")
+      .maybeSingle();
+    if (!wp || !wp.vault_secret_id) {
       return jsonError(
-        { error: "LinkedIn token expired and no refresh token available", needsReconnect: true },
-        401,
+        { error: "WordPress is not connected for this brand", needsReconnect: true },
+        400,
       );
     }
-    try {
-      const refreshed = await refreshAccessToken(token.refresh_token);
-      const newExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-      token = {
-        access_token: refreshed.access_token,
-        refresh_token: refreshed.refresh_token ?? token.refresh_token,
-        expires_at: newExpiresAt,
-        scope: refreshed.scope,
-        user_sub: token.user_sub,
-      };
-      await updateSecret(tokenRow.vault_secret_id, { ...token });
-      await service
-        .from("brand_oauth_tokens")
-        .update({ expires_at: newExpiresAt })
-        .eq("id", tokenRow.id);
-    } catch (err) {
-      const msg = err instanceof LinkedInOAuthError ? err.message : "Token refresh failed";
-      return jsonError({ error: msg, needsReconnect: true }, 401);
+    if (wp.status !== "active") {
+      return jsonError(
+        { error: `WordPress connection status is ${wp.status}`, needsReconnect: true },
+        400,
+      );
     }
+    oauthTokenId = wp.id;
+    wpVaultSecretId = wp.vault_secret_id;
+  } else {
+    return jsonError({ error: `Platform ${post.platform} not yet supported` }, 400);
   }
 
-  // 5. Backfill user_sub for tokens issued before that field existed
-  let sub = token.user_sub;
-  if (!sub) {
-    try {
-      const userInfo = await fetchUserInfo(token.access_token);
-      sub = userInfo.sub;
-      token = { ...token, user_sub: sub };
-      await updateSecret(tokenRow.vault_secret_id, { ...token });
-    } catch (err) {
-      const msg = err instanceof LinkedInOAuthError ? err.message : "Failed to fetch LinkedIn profile";
-      return jsonError({ error: msg, needsReconnect: true }, 401);
-    }
+  // 3. Atomically CLAIM the post for publishing — prevents double-publish when
+  //    two requests race. Only one update will match status<>published/publishing.
+  const { data: claimed } = await db
+    .from("posts")
+    .update({ status: "publishing" })
+    .eq("id", post.id)
+    .not("status", "in", '("published","publishing")')
+    .select("id");
+  if (!claimed || (claimed as unknown[]).length === 0) {
+    return jsonError({ error: "Post is already published or publishing" }, 409);
   }
 
-  // 6. Publish
-  let urn: string;
-  let url: string;
+  // 4. Publish via the resolved destination. Any throw must release the claim
+  //    ('publishing' → 'failed'), never strand the post.
+  let outcome: PublishOutcome;
   try {
-    const result = await publishMemberPost(token.access_token, sub, post.content_text);
-    urn = result.urn;
-    url = result.url;
+    if (post.platform === "linkedin") {
+      const result = await publishToLinkedIn({
+        brandId: post.brand_id,
+        contentText: post.content_text as string,
+      });
+      outcome = result.outcome;
+      oauthTokenId = result.oauthTokenId;
+    } else if (post.platform === "hosted") {
+      outcome = await adapters.hosted.publish({
+        post: publishable,
+        brandId: post.brand_id,
+        config: {},
+      });
+    } else {
+      outcome = await adapters.wordpress.publish({
+        post: publishable,
+        brandId: post.brand_id,
+        config: { vaultSecretId: wpVaultSecretId },
+      });
+    }
   } catch (err) {
-    const msg = err instanceof LinkedInApiError ? err.message : "LinkedIn publish failed";
-    const status = err instanceof LinkedInApiError && err.status === 401 ? 401 : 502;
+    console.error("publish dispatch threw:", err);
+    await markFailed(service, post.id);
+    return jsonError({ error: "Publish failed unexpectedly" }, 500);
+  }
+
+  // 5. Audit (best-effort) + handle failure (release the claim → 'failed')
+  await logPublishAttempt(service, {
+    post_id: post.id,
+    brand_id: post.brand_id,
+    platform: post.platform,
+    oauth_token_id: oauthTokenId,
+    outcome,
+  });
+
+  if (!outcome.ok) {
+    await markFailed(service, post.id);
     return jsonError(
-      { error: msg, needsReconnect: status === 401 },
-      status,
+      { error: outcome.message, needsReconnect: outcome.needsReconnect },
+      outcome.status || 502,
     );
   }
 
-  // 7. Update post row
+  // 6. Mark published (service-role: avoids RLS/transient flakiness leaving the
+  //    post stranded in 'publishing' after it's already live on the destination).
   const publishedAt = new Date().toISOString();
-  const { error: updateErr } = await supabase
+  // Cast to the untyped client (file idiom, see `db` above) — database.types.ts
+  // doesn't yet carry variant_state, so the typed Update rejects it.
+  const { error: updateErr } = await (service as unknown as SupabaseClient)
     .from("posts")
     .update({
       status: "published",
-      external_post_id: urn,
-      external_post_url: url,
+      // Keep variant_state in lockstep so the kitchen reconstructs the published
+      // lock after a reload (page.tsx hydrates variant state from variant_state,
+      // not posts.status). Harmless for hosted/wordpress.
+      variant_state: "published",
+      external_post_id: outcome.externalId,
+      external_post_url: outcome.externalUrl,
       published_at: publishedAt,
     })
-    .eq("id", postId);
-
+    .eq("id", post.id);
   if (updateErr) {
-    // Post was published on LinkedIn but DB update failed — log and still
-    // return success URL so the user can verify and we don't double-post.
-    console.error("Post published but DB update failed:", updateErr.message);
+    // Published on the destination but DB update failed — content is LIVE, so we
+    // do not revert; log loudly and still return success (avoids double-post).
+    console.error(
+      `Post ${post.id} published to ${post.platform} but status update failed (stuck 'publishing'):`,
+      updateErr.message,
+    );
   }
 
   return NextResponse.json({
     success: true,
-    urn,
-    url,
+    // Back-compat keys for the existing LinkedIn publish UI:
+    urn: outcome.externalId,
+    url: outcome.externalUrl,
+    external_id: outcome.externalId,
     published_at: publishedAt,
   });
 }

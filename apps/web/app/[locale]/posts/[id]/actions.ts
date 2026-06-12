@@ -8,8 +8,7 @@ import {
   findRuleConflict,
   type ApplyRule,
 } from "@/lib/brand-rules/rule-validation";
-
-const MAX_CONTENT_LEN = 5000;
+import { bodyUpdateForPlatform, maxBodyChars } from "@/lib/post-body";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -19,9 +18,6 @@ export async function updatePostContent(
 ): Promise<ActionResult> {
   const trimmed = text.trim();
   if (!trimmed) return { ok: false, error: "Content cannot be empty" };
-  if (trimmed.length > MAX_CONTENT_LEN) {
-    return { ok: false, error: `Max ${MAX_CONTENT_LEN} characters` };
-  }
 
   const supabase = await createClient();
   const {
@@ -29,20 +25,26 @@ export async function updatePostContent(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
+  // Read platform too: a blog/hosted post writes content_markdown, not
+  // content_text (else publish ships the stale original). lib/post-body owns
+  // the split + the per-platform length cap.
   const { data: post } = await supabase
     .from("posts")
-    .select("id, status")
+    .select("id, status, platform")
     .eq("id", postId)
     .maybeSingle();
   if (!post) return { ok: false, error: "Post not found" };
   if (post.status === "published") {
     return { ok: false, error: "Cannot edit a published post" };
   }
+  if (trimmed.length > maxBodyChars(post.platform)) {
+    return { ok: false, error: `Max ${maxBodyChars(post.platform)} characters` };
+  }
 
   const { error } = await supabase
     .from("posts")
     .update({
-      content_text: trimmed,
+      ...bodyUpdateForPlatform(post.platform, trimmed),
       detection_score: null,
       detection_breakdown: null,
       updated_at: new Date().toISOString(),
@@ -86,9 +88,6 @@ export async function applyBrandRule(input: {
     typeof input.rewrittenText === "string" && input.rewrittenText.trim()
       ? input.rewrittenText.trim()
       : null;
-  if (rewritten && rewritten.length > MAX_CONTENT_LEN) {
-    return { ok: false, error: `Max ${MAX_CONTENT_LEN} characters` };
-  }
 
   const supabase = await createClient();
   const {
@@ -96,12 +95,16 @@ export async function applyBrandRule(input: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in" };
 
+  // platform drives the body column (content_markdown for hosted) + length cap.
   const { data: post } = await supabase
     .from("posts")
-    .select("id, brand_id, status")
+    .select("id, brand_id, status, platform")
     .eq("id", input.postId)
     .maybeSingle();
   if (!post) return { ok: false, error: "Post not found" };
+  if (rewritten && rewritten.length > maxBodyChars(post.platform)) {
+    return { ok: false, error: `Max ${maxBodyChars(post.platform)} characters` };
+  }
 
   // Beta gate (Codex P1): the refine route + brand page are beta-gated, but this
   // write path must repeat the gate — otherwise a non-beta user could call the
@@ -173,7 +176,7 @@ export async function applyBrandRule(input: {
     const { data: updRows, error: updErr } = await supabase
       .from("posts")
       .update({
-        content_text: rewritten,
+        ...bodyUpdateForPlatform(post.platform, rewritten),
         detection_score: null,
         detection_breakdown: null,
         updated_at: new Date().toISOString(),

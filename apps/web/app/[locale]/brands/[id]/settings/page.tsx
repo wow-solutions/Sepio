@@ -28,7 +28,7 @@ export default async function BrandSettingsPage({ params }: PageProps) {
   const { data: brand } = await supabase
     .from("brands")
     .select(
-      "id, name, slug, industry, industry_category_id, primary_language, industry_categories ( name_en, name_ru )",
+      "id, name, slug, industry, industry_category_id, primary_language, additional_languages, industry_categories ( name_en, name_ru )",
     )
     .eq("id", brandId)
     .is("deleted_at", null)
@@ -153,6 +153,7 @@ export default async function BrandSettingsPage({ params }: PageProps) {
             initialCategoryId={brand.industry_category_id}
             initialDisplayName={initialDisplayName}
             initialLanguage={brand.primary_language}
+            initialAdditionalLanguages={brand.additional_languages ?? []}
             initialBrandVoice={brandConfig?.brand_voice ?? ""}
           />
         </div>

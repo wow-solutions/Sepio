@@ -8,6 +8,8 @@ import {
 } from "./_private/format-specs";
 import { buildBlogArticleUserText } from "./_private/blog-article";
 import type { KeywordIdea } from "./_private/dataforseo-keywords";
+import type { AngleId, Stance } from "./angles-shared";
+import { PRIMARY_URL_TOKEN } from "./kitchen/channel-formats";
 
 // Per-format draft generation. Two cached system blocks:
 //   1. Brand context (voice, VOC, samples) — stable per brand, so one topic
@@ -228,17 +230,57 @@ export async function generateBlogArticle(
   config: BrandConfigRow,
   primaryLanguage: string,
   brief: string,
-  opts?: GenerateOptions & { keywords?: KeywordIdea[] },
+  opts?: GenerateOptions & {
+    keywords?: KeywordIdea[];
+    angle?: AngleId;
+    stance?: Stance | null;
+  },
 ): Promise<GenerateResult> {
   const b = brief.trim();
   if (!b) throw new ClaudeError("brief is empty");
   return callClaude(
     config,
     primaryLanguage,
-    buildBlogArticleUserText(b, opts?.keywords),
+    buildBlogArticleUserText(b, opts?.keywords, opts?.angle, opts?.stance),
     "blog",
     opts,
   );
+}
+
+// Content Kitchen (fan-out): adapt a SOURCE article (the blog/hosted post) into
+// a channel-native variant in the target FORMAT. Same engine, brand voice, and
+// moat as generation — the system prompt (configForGen + extraContext) carries
+// the voice + differentiation, the format spec sizes/structures the output, and
+// only the user message changes: it ADAPTS the source rather than writing from a
+// topic. Mirrors generateBlogArticle/adaptToLinkedIn in shape.
+//
+// Cross-link contract: when the target format benefits from linking to the full
+// article, the model references it as the LITERAL token PRIMARY_URL_TOKEN
+// ({{PRIMARY_URL}}) — never a real URL it invents. The cross-link resolver
+// substitutes the real destination URL at publish/export time. For formats whose
+// directive forbids in-body links (LinkedIn/X/Threads/Facebook), no link at all.
+export async function generateVariantFromSource(
+  config: BrandConfigRow,
+  primaryLanguage: string,
+  sourceBody: string,
+  format: GenFormat,
+  opts?: GenerateOptions,
+): Promise<GenerateResult> {
+  const source = sourceBody.trim();
+  if (!source) throw new ClaudeError("source body is empty");
+  const label = FORMAT_SPECS[format].label;
+  const userText = [
+    `Below is a SOURCE ARTICLE. Adapt it into a ${label} for this brand.`,
+    "Pick the single strongest platform-native angle — do NOT summarize everything; one sharp idea beats a recap.",
+    "Preserve the brand's point of view and the substance of the source; only the shape, length, and structure change to fit the format directive in the system prompt.",
+    `If — and only if — the format benefits from linking to the full article, reference it EXACTLY as the literal token ${PRIMARY_URL_TOKEN}. Never invent or write a real URL; emit that exact token and nothing else as the link.`,
+    "If the format directive forbids links in the body, do NOT add any link.",
+    "Output ONLY the content itself — no preamble, no surrounding quotes.",
+    "",
+    "SOURCE ARTICLE:",
+    source,
+  ].join("\n");
+  return callClaude(config, primaryLanguage, userText, format, opts);
 }
 
 // Editorial Memory (T3): rewrite an existing post per a natural-language

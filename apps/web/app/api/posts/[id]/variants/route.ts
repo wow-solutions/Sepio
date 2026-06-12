@@ -1,0 +1,360 @@
+// POST /api/posts/[id]/variants — Content Kitchen fan-out (one source → N channels).
+//
+// Given a post [id], generate (or return a cached) channel-native VARIANT for a
+// target platform. The blog/hosted post is the SOURCE; every social channel is a
+// variant adapted from it, in the brand voice + differentiation (same moat as the
+// generate route). Variants share a content_group so the group can be re-fanned
+// when the source is re-edited (source_version bump → variants go stale).
+//
+// Direct route (heavy synchronous LLM call returning data to the client) — same
+// precedent as the refine route; auth is the session cookie.
+
+import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { generateVariantFromSource, ClaudeError } from "@/lib/claude";
+import {
+  isChannelId,
+  DEFAULT_FORMAT_BY_CHANNEL,
+  type ChannelId,
+} from "@/lib/kitchen/channel-formats";
+import { getPostBody, bodyUpdateForPlatform } from "@/lib/post-body";
+import { differentiationContextBlocks } from "@/lib/market-brain/differentiation-context";
+import {
+  mergeRuleWords,
+  renderVoiceNoteBlocks,
+} from "@/lib/brand-rules/rules-context";
+
+export const maxDuration = 60; // a single LLM call (short-form), but Sonnet headroom.
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The blog IS the source, not a variant — reject 'hosted' explicitly (zod's
+// refine carries the user-facing message). Any other valid ChannelId is allowed.
+export const RequestSchema = z.object({
+  platform: z
+    .string()
+    .refine(isChannelId, "Unknown platform")
+    .refine((p) => p !== "hosted", "the blog is the source, not a variant"),
+  force: z.boolean().optional(),
+});
+
+// variant_state values that mean "a usable variant already exists" — a freshly
+// synced/edited/published child can be reused; 'source' is the blog itself and
+// 'stale' must be regenerated.
+type VariantState = "source" | "synced" | "stale" | "edited" | "published";
+type ChildVariant = {
+  generated_from_source_version: number | null;
+  variant_state: string | null;
+};
+
+// Pure cache decision (extracted for unit tests). A child variant is FRESH —
+// returnable unchanged — when it exists, force was not requested, it was
+// generated from the group's current source_version, and its state is one of the
+// "real content" states (not 'source'/'stale'). Anything else → regenerate.
+export function isVariantFresh(
+  child: ChildVariant | null | undefined,
+  groupSourceVersion: number,
+  force?: boolean,
+): boolean {
+  if (!child || force === true) return false;
+  if (child.generated_from_source_version !== groupSourceVersion) return false;
+  const usable: ReadonlySet<VariantState> = new Set<VariantState>([
+    "synced",
+    "edited",
+    "published",
+  ]);
+  return usable.has(child.variant_state as VariantState);
+}
+
+function jsonError(error: string, status: number): Response {
+  return Response.json({ error }, { status });
+}
+
+// Minimal row shapes read through the untyped `db` client (see POST below) past
+// the lagging database.types (T-types): content_groups isn't in the generated
+// types at all, and posts lacks the kitchen columns.
+type SourcePostRow = {
+  id: string;
+  brand_id: string;
+  platform: string;
+  language: string;
+  status: string;
+  content_text: string | null;
+  content_markdown: string | null;
+  source_post_id: string | null;
+  content_group_id: string | null;
+};
+type ContentGroupRow = { id: string; source_version: number };
+type ChildPostRow = ChildVariant & {
+  id: string;
+  content_text: string | null;
+  content_markdown: string | null;
+};
+
+export async function POST(
+  request: Request,
+  ctx: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  const { id: postId } = await ctx.params;
+  if (!UUID.test(postId)) return jsonError("Invalid post id", 400);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return jsonError("Not signed in", 401);
+
+  const body: unknown = await request.json().catch(() => ({}));
+  const parsed = RequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return jsonError(parsed.error.issues[0]?.message ?? "Invalid request", 400);
+  }
+  const platform = parsed.data.platform as ChannelId;
+  const force = parsed.data.force;
+
+  // database.types.ts lags the kitchen migration (T-types): `content_groups`
+  // isn't in the generated types at all, and `posts` is missing content_group_id
+  // / source_post_id / variant_state / generated_from_source_version. Drive those
+  // reads/writes through an untyped client (the established escape — see
+  // publish/route.ts `db = supabase as unknown as SupabaseClient`). RLS still
+  // applies; we lose only compile-time column checking on the new columns.
+  const db = supabase as unknown as SupabaseClient;
+
+  // The requested post (RLS owner read).
+  const { data: postRaw } = await db
+    .from("posts")
+    .select(
+      "id, brand_id, platform, language, status, content_text, content_markdown, source_post_id, content_group_id",
+    )
+    .eq("id", postId)
+    .maybeSingle();
+  const post = postRaw as SourcePostRow | null;
+  if (!post) return jsonError("Post not found", 404);
+
+  // Resolve the SOURCE: a post with no source_post_id IS the source (the blog);
+  // otherwise the named source is the canonical article we adapt from.
+  let source: SourcePostRow = post;
+  if (post.source_post_id) {
+    const { data: srcRaw } = await db
+      .from("posts")
+      .select(
+        "id, brand_id, platform, language, status, content_text, content_markdown, source_post_id, content_group_id",
+      )
+      .eq("id", post.source_post_id)
+      .maybeSingle();
+    const src = srcRaw as SourcePostRow | null;
+    if (!src) return jsonError("Source post not found", 404);
+    source = src;
+  }
+
+  const sourceBody = getPostBody(source);
+  if (!sourceBody.trim()) {
+    return jsonError("Source post has no content to adapt", 400);
+  }
+
+  // Ensure the source belongs to a content_group. If not, create one and mark the
+  // source post as the group's 'source' at version 1. The group's source_version
+  // is the freshness key the variants are generated against.
+  let groupId: string;
+  let groupVersion: number;
+  if (source.content_group_id) {
+    const { data: grpRaw, error: grpErr } = await db
+      .from("content_groups")
+      .select("id, source_version")
+      .eq("id", source.content_group_id)
+      .maybeSingle();
+    if (grpErr) return jsonError(grpErr.message, 500);
+    const grp = grpRaw as ContentGroupRow | null;
+    if (!grp) return jsonError("Content group not found", 404);
+    groupId = grp.id;
+    groupVersion = grp.source_version;
+  } else {
+    const { data: grpRaw, error: grpErr } = await db
+      .from("content_groups")
+      .insert({
+        brand_id: source.brand_id,
+        source_version: 1,
+        selected_platforms: ["hosted"],
+      })
+      .select("id, source_version")
+      .single();
+    if (grpErr || !grpRaw) {
+      return jsonError(grpErr?.message ?? "Failed to create content group", 500);
+    }
+    const grp = grpRaw as ContentGroupRow;
+    groupId = grp.id;
+    groupVersion = grp.source_version;
+
+    const { error: updErr } = await db
+      .from("posts")
+      .update({
+        content_group_id: groupId,
+        variant_state: "source",
+        generated_from_source_version: 1,
+      })
+      .eq("id", source.id);
+    if (updErr) return jsonError(updErr.message, 500);
+  }
+
+  // Existing child variant for this (group, platform) — the unique index enforces
+  // at most one. CACHE: a fresh, usable child is returned unchanged.
+  const { data: childRaw } = await db
+    .from("posts")
+    .select(
+      "id, content_text, content_markdown, variant_state, generated_from_source_version",
+    )
+    .eq("content_group_id", groupId)
+    .eq("platform", platform)
+    .maybeSingle();
+  const existingChild = childRaw as ChildPostRow | null;
+
+  if (existingChild && isVariantFresh(existingChild, groupVersion, force)) {
+    return Response.json({
+      post_id: existingChild.id,
+      content_group_id: groupId,
+      platform,
+      variant_state: existingChild.variant_state,
+      generated_from_source_version: existingChild.generated_from_source_version,
+      content_text: existingChild.content_text,
+      content_markdown: existingChild.content_markdown,
+    });
+  }
+
+  // ── Generate ───────────────────────────────────────────────────────────────
+  // Same moat assembly as the generate route: merged word columns → configForGen,
+  // differentiation + voice_note blocks → extraContext.
+  const { data: config } = await supabase
+    .from("brand_configs")
+    .select("*")
+    .eq("brand_id", source.brand_id)
+    .maybeSingle();
+  if (!config) return jsonError("Brand config missing", 500);
+
+  const { data: diffRow, error: diffErr } = await supabase
+    .from("market_differentiation")
+    .select("common_themes, positioning_gaps")
+    .eq("brand_id", source.brand_id)
+    .maybeSingle();
+  if (diffErr) {
+    console.error("market_differentiation read failed:", diffErr.message);
+  }
+
+  const { data: ruleRows, error: rulesErr } = await supabase
+    .from("brand_rules")
+    .select("rule_type, scope, rule_text")
+    .eq("brand_id", source.brand_id)
+    .eq("active", true)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  if (rulesErr) {
+    console.error("brand_rules read failed:", rulesErr.message);
+  }
+  const rules = rulesErr ? [] : (ruleRows ?? []);
+  const mergedWords = mergeRuleWords(
+    rules,
+    config.forbidden_words ?? [],
+    config.required_phrases ?? [],
+  );
+  const configForGen = {
+    ...config,
+    forbidden_words: mergedWords.forbidden,
+    required_phrases: mergedWords.required,
+  };
+  const extraContext = [
+    ...differentiationContextBlocks(diffErr ? null : diffRow),
+    ...renderVoiceNoteBlocks(rules),
+  ];
+
+  let generated;
+  try {
+    generated = await generateVariantFromSource(
+      configForGen,
+      source.language,
+      sourceBody,
+      DEFAULT_FORMAT_BY_CHANNEL[platform],
+      { extraContext },
+    );
+  } catch (err) {
+    const msg = err instanceof ClaudeError ? err.message : "Generate failed";
+    const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
+    return jsonError(msg, status);
+  }
+
+  // Upsert the child. 'hosted' is excluded above, so bodyUpdateForPlatform always
+  // routes the body to content_text here. On an existing row this is a regenerate
+  // (update in place, keyed by the unique (content_group_id, platform) index).
+  const bodyPatch = bodyUpdateForPlatform(platform, generated.text);
+  let childId: string;
+  if (existingChild) {
+    const { error: updErr } = await db
+      .from("posts")
+      .update({
+        ...bodyPatch,
+        variant_state: "synced",
+        generated_from_source_version: groupVersion,
+      })
+      .eq("id", existingChild.id);
+    if (updErr) return jsonError(updErr.message, 500);
+    childId = existingChild.id;
+  } else {
+    const { data: inserted, error: insErr } = await db
+      .from("posts")
+      .insert({
+        brand_id: source.brand_id,
+        platform,
+        language: source.language,
+        content_group_id: groupId,
+        source_post_id: source.id,
+        variant_state: "synced",
+        generated_from_source_version: groupVersion,
+        status: "draft",
+        source_type: "manual",
+        ...bodyPatch,
+      })
+      .select("id")
+      .single();
+    if (insErr) {
+      // Race recovery: a concurrent request for the same (group, platform) won
+      // the insert first and tripped the partial unique index
+      // posts_one_variant_per_group_platform_idx. Return the row that now exists
+      // (RLS-scoped) instead of surfacing a 500 — both requests generated from
+      // the same source, so the winner's variant is equivalent.
+      if (insErr.code === "23505") {
+        const { data: raceRaw } = await db
+          .from("posts")
+          .select(
+            "id, content_text, content_markdown, variant_state, generated_from_source_version",
+          )
+          .eq("content_group_id", groupId)
+          .eq("platform", platform)
+          .maybeSingle();
+        const raced = raceRaw as ChildPostRow | null;
+        if (raced) {
+          return Response.json({
+            post_id: raced.id,
+            content_group_id: groupId,
+            platform,
+            variant_state: raced.variant_state ?? "synced",
+            generated_from_source_version: raced.generated_from_source_version,
+            content_text: raced.content_text,
+            content_markdown: raced.content_markdown,
+          });
+        }
+      }
+      return jsonError(insErr.message ?? "Failed to save variant", 500);
+    }
+    if (!inserted) return jsonError("Failed to save variant", 500);
+    childId = (inserted as { id: string }).id;
+  }
+
+  return Response.json({
+    post_id: childId,
+    content_group_id: groupId,
+    platform,
+    variant_state: "synced",
+    generated_from_source_version: groupVersion,
+    content_text: bodyPatch.content_text ?? null,
+    content_markdown: bodyPatch.content_markdown ?? null,
+  });
+}

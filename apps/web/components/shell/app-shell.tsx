@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { AppTopBar } from "./app-topbar";
 import { Rail, type RailActive } from "./rail";
 import { CollapsibleRail } from "./collapsible-rail";
+import { KitchenProvider, type InitialGroup } from "./kitchen-context";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 
 type Props = {
@@ -14,6 +15,9 @@ type Props = {
   planTier?: string | null;
   planStatus?: string | null;
   trialEndsAt?: string | null;
+  // Writer only: seed the kitchen from an opened content group (reconstruct the
+  // whole chain). Keys the provider so a different group/channel re-initializes.
+  kitchenInitialGroup?: InitialGroup | null;
   children: React.ReactNode;
 };
 
@@ -31,9 +35,16 @@ export async function AppShell({
   planTier,
   planStatus,
   trialEndsAt,
+  kitchenInitialGroup = null,
   children,
 }: Props) {
   const t = await getTranslations("shell");
+  // Remount the provider (re-run its state initializers) when the opened group/
+  // channel changes; stay stable per-brand otherwise so normal navigation keeps
+  // the rail's persisted selection.
+  const kitchenKey = kitchenInitialGroup
+    ? `group:${kitchenInitialGroup.source.postId}:${kitchenInitialGroup.active}`
+    : `brand:${currentBrandId ?? "none"}`;
 
   // Resolve trial + billing labels here (server) so Rail/AccountMenu receive
   // plain strings and pass cleanly through the client CollapsibleRail / menu.
@@ -76,43 +87,52 @@ export async function AppShell({
           billing: billingLabel,
         }}
       />
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
-        <CollapsibleRail
-          expandLabel={t("showMenu")}
-          collapseLabel={t("hideMenu")}
-        >
-          <Rail
-            active={active}
-            brands={brands}
-            currentBrandId={currentBrandId}
-            planTier={planTier}
-            trialLabel={trialLabel}
-            billingLabel={billingLabel}
-            labels={{
-              workspace: t("workspace"),
-              home: t("home"),
-              writer: t("writer"),
-              posts: t("posts"),
-              channels: t("channels"),
-              soon: t("soon"),
-              connect: t("connect"),
-              upgrade: t("upgrade"),
-              selectBrandHint: t("selectBrandHint"),
+      {/* KitchenProvider wraps BOTH the rail and the page so the content-kitchen
+          channel selection (set by the writer) is readable by the rail. Inert on
+          every page except the writer. */}
+      <KitchenProvider
+        key={kitchenKey}
+        brandId={currentBrandId}
+        initialGroup={kitchenInitialGroup}
+      >
+        <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+          <CollapsibleRail
+            expandLabel={t("showMenu")}
+            collapseLabel={t("hideMenu")}
+          >
+            <Rail
+              active={active}
+              brands={brands}
+              currentBrandId={currentBrandId}
+              planTier={planTier}
+              trialLabel={trialLabel}
+              billingLabel={billingLabel}
+              labels={{
+                workspace: t("workspace"),
+                home: t("home"),
+                writer: t("writer"),
+                posts: t("posts"),
+                channels: t("channels"),
+                soon: t("soon"),
+                connect: t("connect"),
+                upgrade: t("upgrade"),
+                selectBrandHint: t("selectBrandHint"),
+              }}
+            />
+          </CollapsibleRail>
+          <main
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              overflowY: "auto",
+              minWidth: 0,
             }}
-          />
-        </CollapsibleRail>
-        <main
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            overflowY: "auto",
-            minWidth: 0,
-          }}
-        >
-          {children}
-        </main>
-      </div>
+          >
+            {children}
+          </main>
+        </div>
+      </KitchenProvider>
     </div>
   );
 }

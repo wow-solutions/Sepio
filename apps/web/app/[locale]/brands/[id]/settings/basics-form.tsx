@@ -21,10 +21,20 @@ type Props = {
   initialCategoryId: string | null;
   initialDisplayName: string | null;
   initialLanguage: string;
+  initialAdditionalLanguages: string[];
   initialBrandVoice: string;
 };
 
 const MAX_VOICE_CHARS = 5000;
+
+const ALLOWED_LANGUAGES = ["en", "es", "ru", "pt", "fr"] as const;
+const LANGUAGE_LABELS: Record<(typeof ALLOWED_LANGUAGES)[number], string> = {
+  en: "English",
+  es: "Español",
+  ru: "Русский",
+  pt: "Português",
+  fr: "Français",
+};
 
 export function BasicsForm({
   brandId,
@@ -32,6 +42,7 @@ export function BasicsForm({
   initialCategoryId,
   initialDisplayName,
   initialLanguage,
+  initialAdditionalLanguages,
   initialBrandVoice,
 }: Props) {
   const t = useTranslations("brandSettings");
@@ -41,6 +52,9 @@ export function BasicsForm({
     initialDisplayName,
   );
   const [language, setLanguage] = useState<string>(initialLanguage);
+  const [additionalLanguages, setAdditionalLanguages] = useState<string[]>(
+    initialAdditionalLanguages,
+  );
   const [brandVoice, setBrandVoice] = useState<string>(initialBrandVoice);
 
   const [dirty, setDirty] = useState(false);
@@ -60,12 +74,22 @@ export function BasicsForm({
     markDirty();
   };
 
+  const toggleAdditional = (code: string) => {
+    setAdditionalLanguages((prev) =>
+      prev.includes(code)
+        ? prev.filter((l) => l !== code)
+        : [...prev, code],
+    );
+    markDirty();
+  };
+
   const handleSave = () => {
     setError(null);
     startTransition(async () => {
       const result = await updateBrandBasics(brandId, {
         industryCategoryId: categoryId,
         primaryLanguage: language,
+        additionalLanguages: additionalLanguages.filter((l) => l !== language),
         brandVoice: brandVoice,
       });
       if (!result.ok) {
@@ -144,6 +168,7 @@ export function BasicsForm({
           value={language}
           onValueChange={(v) => {
             setLanguage(v);
+            setAdditionalLanguages((prev) => prev.filter((l) => l !== v));
             markDirty();
           }}
         >
@@ -158,6 +183,58 @@ export function BasicsForm({
             <SelectItem value="fr">Français</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Additional languages (allowlist) */}
+      <div>
+        <label
+          style={{
+            display: "block",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ink-faint)",
+            marginBottom: 6,
+          }}
+        >
+          Also publish in
+        </label>
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--ink-muted)",
+            margin: "0 0 8px",
+          }}
+        >
+          Extra languages this brand publishes content in.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {ALLOWED_LANGUAGES.filter((code) => code !== language).map((code) => {
+            const selected = additionalLanguages.includes(code);
+            return (
+              <button
+                key={code}
+                type="button"
+                onClick={() => toggleAdditional(code)}
+                aria-pressed={selected}
+                style={{
+                  cursor: "pointer",
+                  fontSize: 13,
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  border: "1px solid var(--border-subtle)",
+                  background: selected ? "var(--ink)" : "transparent",
+                  color: selected ? "var(--raised)" : "var(--ink-muted)",
+                  fontWeight: selected ? 500 : 400,
+                }}
+              >
+                {LANGUAGE_LABELS[code]}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Brand voice */}

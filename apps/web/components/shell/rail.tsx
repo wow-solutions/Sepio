@@ -1,6 +1,7 @@
 import { Link } from "@/i18n/navigation";
 import { BrandSwitcher, type BrandOption } from "@/components/brand/brand-switcher";
 import { BillingCta } from "./billing-cta";
+import { KitchenChannels } from "./kitchen-channels";
 
 export type RailActive =
   | "home"
@@ -36,17 +37,8 @@ type Props = {
   };
 };
 
-// Channels we surface in the rail. LinkedIn is the only wired platform today
-// (ADR-0019); the rest are shown as "soon" so the rail reads honest, not
-// over-promised. The 2-letter Fraunces pill matches the handoff channel rail.
-const CHANNELS: { name: string; icon: string; live: boolean }[] = [
-  { name: "LinkedIn", icon: "in", live: true },
-  { name: "Telegram", icon: "Tg", live: false },
-  { name: "Instagram", icon: "Ig", live: false },
-  { name: "TikTok", icon: "Tt", live: false },
-  { name: "Threads", icon: "Th", live: false },
-  { name: "Blog", icon: "Bl", live: false },
-];
+// The channel list + per-channel row rendering moved to KitchenChannels (the
+// content-kitchen selector — interactive in the writer, indicators elsewhere).
 
 const ACTIVE_BG = "rgba(176,123,80,0.12)";
 const ACTIVE_BORDER = "rgba(176,123,80,0.28)";
@@ -115,21 +107,12 @@ export function Rail({
         <RailItem href={postsHref} icon="◊" label={labels.posts} active={active === "posts"} />
       </nav>
 
-      {/* Channels */}
+      {/* Channels — the content-kitchen selector. Inside the writer the rows are
+          interactive (toggle a destination + click to preview its variant); on
+          every other page they fall back to connection indicators. */}
       <div>
         <RailGroupLabel>{labels.channels}</RailGroupLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-          {CHANNELS.map((c) => (
-            <RailChannel
-              key={c.name}
-              name={c.name}
-              icon={c.icon}
-              live={c.live}
-              href={c.live && currentBrandId ? `/brands/${currentBrandId}` : null}
-              soonLabel={labels.soon}
-            />
-          ))}
-        </div>
+        <KitchenChannels />
       </div>
 
       {/* Plan / billing card — countdown only on trial, CTA in every state */}
@@ -241,92 +224,3 @@ function RailItem({
   );
 }
 
-function RailChannel({
-  name,
-  icon,
-  live,
-  href,
-  soonLabel,
-}: {
-  name: string;
-  icon: string;
-  live: boolean;
-  href: string | null;
-  soonLabel: string;
-}) {
-  const inner = (
-    <>
-      <span
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 5,
-          background: "rgba(176,123,80,0.12)",
-          color: "var(--brand)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "var(--font-fraunces), Georgia, serif",
-          fontVariationSettings: '"opsz" 36',
-          fontWeight: 600,
-          fontSize: 11,
-          letterSpacing: "-0.02em",
-          flexShrink: 0,
-          opacity: live ? 1 : 0.5,
-        }}
-        aria-hidden
-      >
-        {icon}
-      </span>
-      <span style={{ flex: 1, color: live ? "var(--ink)" : "var(--ink-faint)" }}>
-        {name}
-      </span>
-      {live ? (
-        // Live channel — green "connected" status dot. LinkedIn is the wired
-        // platform today.
-        <span
-          aria-hidden
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: "50%",
-            background: "var(--pass)",
-            boxShadow: "0 0 0 3px rgba(122,160,121,0.18)",
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <span
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            color: "var(--ink-faint)",
-          }}
-        >
-          {soonLabel}
-        </span>
-      )}
-    </>
-  );
-
-  const baseStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "7px 12px",
-    borderRadius: 7,
-    fontSize: 13.5,
-    textDecoration: "none",
-  };
-
-  if (live && href) {
-    return (
-      <Link href={href} style={baseStyle}>
-        {inner}
-      </Link>
-    );
-  }
-  return <div style={{ ...baseStyle, cursor: "default" }}>{inner}</div>;
-}

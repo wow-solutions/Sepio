@@ -21,10 +21,21 @@ export function EditorialPanel({
   postId,
   currentContent,
   brandId,
+  onApplied,
+  disabled = false,
+  disabledHint,
 }: {
   postId: string;
   currentContent: string;
   brandId: string;
+  // When provided (writer edit mode), a successful rewrite-apply calls this with
+  // the new body instead of router.refresh() — the writer owns the live editor
+  // state, so there is no server page to refresh.
+  onApplied?: (newContent: string) => void;
+  // Disable the trigger (e.g. the writer has unsaved edits — refine would diff
+  // against the stale DB copy and Apply could clobber the local edit).
+  disabled?: boolean;
+  disabledHint?: string;
 }) {
   const t = useTranslations("posts.detail.editorial");
   const router = useRouter();
@@ -53,6 +64,18 @@ export function EditorialPanel({
     return () => clearInterval(tmr);
   }, [phase]);
 
+  // Invalidate a rendered result when the underlying content changes (writer
+  // edit mode pushes the live editor body in via currentContent). A rewrite
+  // computed against the previous body must not be applied over a newer one.
+  // The typed instruction is kept; only the stale diff/rule are cleared.
+  // Functional updaters return the same value when there's nothing to clear, so
+  // React bails out — no cascading render on an unrelated content change.
+  useEffect(() => {
+    setPhase((p) => (p === "idle" ? p : "idle"));
+    setResult((r) => (r === null ? r : null));
+    setApplyError((e) => (e === null ? e : null));
+  }, [currentContent]);
+
   function reset() {
     setPhase("idle");
     setInstruction("");
@@ -63,7 +86,7 @@ export function EditorialPanel({
   }
 
   async function onRewrite() {
-    if (!instruction.trim() || phase === "running") return;
+    if (!instruction.trim() || phase === "running" || disabled) return;
     setError(null);
     setNotice(null);
     setResult(null);
@@ -120,7 +143,9 @@ export function EditorialPanel({
   const isFact = result?.edit_kind === "brand_fact" && !!result?.proposed_fact;
 
   function onApply() {
-    if (!result) return;
+    // Block applying a stale rewrite while the editor is dirty (writer edit
+    // mode): the result was computed against the saved body, not the live edit.
+    if (!result || disabled) return;
     setApplyError(null);
     setNotice(null);
 
@@ -134,15 +159,19 @@ export function EditorialPanel({
         }
       : null;
 
+    // In writer edit mode (onApplied present) the writer owns the live editor,
+    // so a content change is pushed via onApplied instead of router.refresh().
+    const newBody = result.rewritten_post;
     startApply(async () => {
-      // No rewrite to apply, but there's a rule → save-rule-only path.
-      if (!result.rewritten_post) {
+      // No rewrite to apply, but there's a rule → save-rule-only path. No content
+      // change, so nothing to push to the writer.
+      if (!newBody) {
         if (!ruleObj) return;
         const r = await applyBrandRule({ postId, rule: ruleObj });
         if (!r.ok) return setApplyError(r.error);
         setNotice(t("ruleSaved"));
         reset();
-        router.refresh();
+        if (!onApplied) router.refresh();
         return;
       }
 
@@ -151,22 +180,23 @@ export function EditorialPanel({
         const r = await applyBrandRule({
           postId,
           rule: ruleObj,
-          rewrittenText: result.rewritten_post,
+          rewrittenText: newBody,
         });
         if (!r.ok) return setApplyError(r.error);
         if (!r.postUpdated) {
-          // Honest partial: rule saved, post not updated.
+          // Honest partial: rule saved, post not updated (content unchanged).
           setApplyError(t("ruleSavedPostNot"));
-          router.refresh();
+          if (!onApplied) router.refresh();
           return;
         }
       } else {
-        const r = await updatePostContent(postId, result.rewritten_post);
+        const r = await updatePostContent(postId, newBody);
         if (!r.ok) return setApplyError(r.error);
       }
       setNotice(t("applied"));
+      if (onApplied) onApplied(newBody);
+      else router.refresh();
       reset();
-      router.refresh();
     });
   }
 
@@ -190,19 +220,21 @@ export function EditorialPanel({
             if (e.key === "Enter") onRewrite();
           }}
           placeholder={t("placeholder")}
-          disabled={busy}
+          disabled={busy || disabled}
           style={instrInput}
         />
         <button
           type="button"
           onClick={onRewrite}
-          disabled={busy || !instruction.trim()}
+          disabled={busy || disabled || !instruction.trim()}
           className="em-apply"
-          style={primaryBtn(busy || !instruction.trim())}
+          style={primaryBtn(busy || disabled || !instruction.trim())}
         >
           {phase === "running" ? t("rewriting") : t("rewrite")}
         </button>
       </div>
+
+      {disabled && disabledHint && <Note tone="muted">{disabledHint}</Note>}
 
       {error && <Note tone="error">{error}</Note>}
       {notice && <Note tone="ok">{notice}</Note>}
@@ -332,9 +364,9 @@ export function EditorialPanel({
               <button
                 type="button"
                 onClick={onApply}
-                disabled={applying}
+                disabled={applying || disabled}
                 className="em-apply"
-                style={primaryBtn(applying)}
+                style={primaryBtn(applying || disabled)}
               >
                 {applying
                   ? t("applying")
