@@ -8,17 +8,9 @@
 // (backwards-compat insert via direct path here in route.ts).
 
 import { describe, expect, test } from "bun:test";
-import { z } from "zod";
-
-// Extracted схема из route.ts (kept in sync manually — if schema changes,
-// update both). Pure function test — no HTTP needed.
-const RequestSchema = z.object({
-  brand_id: z.string().uuid(),
-  format: z.enum(["linkedin_post", "blog"]).default("linkedin_post"),
-  topic_hint: z.string().max(500).optional(),
-  source_text: z.string().min(50).max(30_000).optional(),
-  topic_candidate_id: z.string().uuid().optional(),
-});
+// Import the REAL route schema (not a hand-synced copy) so this test catches
+// schema drift instead of validating a stale duplicate (R-14).
+import { RequestSchema } from "./route";
 
 // Canonical v4 UUID example (passes Zod v4 strict uuid validation)
 const VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";

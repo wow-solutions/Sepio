@@ -153,6 +153,14 @@ export async function POST(
     return jsonError("Source post has no content to adapt", 400);
   }
 
+  // A variant can't be on the SAME platform as its source — otherwise the child
+  // lookup below could resolve to the source row itself and the regenerate branch
+  // would overwrite the canonical source body. Latent while the source is always
+  // 'hosted' (the requested platform is never 'hosted'), but guard it explicitly.
+  if (platform === source.platform) {
+    return jsonError("Cannot create a variant on the source's own platform", 400);
+  }
+
   // Ensure the source belongs to a content_group. If not, create one and mark the
   // source post as the group's 'source' at version 1. The group's source_version
   // is the freshness key the variants are generated against.
@@ -206,6 +214,7 @@ export async function POST(
     )
     .eq("content_group_id", groupId)
     .eq("platform", platform)
+    .neq("id", source.id) // never match the source row itself (R-07)
     .maybeSingle();
   const existingChild = childRaw as ChildPostRow | null;
 
@@ -224,29 +233,33 @@ export async function POST(
   // ── Generate ───────────────────────────────────────────────────────────────
   // Same moat assembly as the generate route: merged word columns → configForGen,
   // differentiation + voice_note blocks → extraContext.
-  const { data: config } = await supabase
-    .from("brand_configs")
-    .select("*")
-    .eq("brand_id", source.brand_id)
-    .maybeSingle();
+  // These three reads are independent (all keyed on source.brand_id) — run them
+  // concurrently to save round-trips before the LLM call (R-09).
+  const [configRes, diffRes, rulesRes] = await Promise.all([
+    supabase.from("brand_configs").select("*").eq("brand_id", source.brand_id).maybeSingle(),
+    supabase
+      .from("market_differentiation")
+      .select("common_themes, positioning_gaps")
+      .eq("brand_id", source.brand_id)
+      .maybeSingle(),
+    supabase
+      .from("brand_rules")
+      .select("rule_type, scope, rule_text")
+      .eq("brand_id", source.brand_id)
+      .eq("active", true)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
+  ]);
+
+  const config = configRes.data;
   if (!config) return jsonError("Brand config missing", 500);
 
-  const { data: diffRow, error: diffErr } = await supabase
-    .from("market_differentiation")
-    .select("common_themes, positioning_gaps")
-    .eq("brand_id", source.brand_id)
-    .maybeSingle();
+  const { data: diffRow, error: diffErr } = diffRes;
   if (diffErr) {
     console.error("market_differentiation read failed:", diffErr.message);
   }
 
-  const { data: ruleRows, error: rulesErr } = await supabase
-    .from("brand_rules")
-    .select("rule_type, scope, rule_text")
-    .eq("brand_id", source.brand_id)
-    .eq("active", true)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true });
+  const { data: ruleRows, error: rulesErr } = rulesRes;
   if (rulesErr) {
     console.error("brand_rules read failed:", rulesErr.message);
   }
@@ -328,6 +341,7 @@ export async function POST(
           )
           .eq("content_group_id", groupId)
           .eq("platform", platform)
+          .neq("id", source.id) // never match the source row itself (R-07)
           .maybeSingle();
         const raced = raceRaw as ChildPostRow | null;
         if (raced) {

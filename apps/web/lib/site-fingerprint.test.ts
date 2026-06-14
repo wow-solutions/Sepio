@@ -3,6 +3,7 @@ import {
   classifyFromSignals,
   detectPlatform,
   normalizeUrl,
+  type DetectOptions,
   type RawSignals,
 } from "./site-fingerprint";
 
@@ -150,12 +151,16 @@ describe("normalizeUrl", () => {
 });
 
 describe("detectPlatform", () => {
+  // Inject a DNS lookup that returns a public IP so the SSRF guard inside
+  // safeFetch passes without real network — keeps these tests hermetic.
+  const publicLookup = (async () => [{ address: "93.184.216.34" }]) as DetectOptions["lookup"];
+
   test("throwing fetch resolves to custom / low and never rejects", async () => {
     const fetchImpl = (async () => {
       throw new Error("ECONNREFUSED");
     }) as unknown as typeof fetch;
 
-    const out = await detectPlatform("example.com", { fetchImpl });
+    const out = await detectPlatform("example.com", { fetchImpl, lookup: publicLookup });
     expect(out.platform).toBe("custom");
     expect(out.confidence).toBe("low");
     expect(typeof out.checked_at).toBe("string");
@@ -186,7 +191,10 @@ describe("detectPlatform", () => {
       return new Response("<html></html>", { status: 200 });
     }) as unknown as typeof fetch;
 
-    const out = await detectPlatform("https://blog.example.com", { fetchImpl });
+    const out = await detectPlatform("https://blog.example.com", {
+      fetchImpl,
+      lookup: publicLookup,
+    });
     expect(out.platform).toBe("wordpress");
     expect(out.confidence).toBe("high");
   });

@@ -51,7 +51,7 @@ import {
 //   - topic_candidate_id: pick from /writer top-5, RPC handles atomicity
 //   - source_text: adapt longer article into a LinkedIn post
 //   - topic_hint: legacy free-text input
-const RequestSchema = z.object({
+export const RequestSchema = z.object({
   brand_id: z.string().uuid(),
   // Output format (kitchen). 'linkedin_post' (default) keeps the existing
   // behavior; 'blog' generates a long-form article published to platform

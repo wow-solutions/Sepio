@@ -14,6 +14,12 @@
 // The analysis is split into a pure classifier (`classifyFromSignals`) so it
 // can be unit-tested without any network. detectPlatform() only does fetching,
 // then hands the raw signals to the pure classifier.
+//
+// SSRF: all network calls go through safeFetch (validates the URL is public,
+// forces manual redirects, re-validates each hop) — so detectPlatform is safe
+// even if a caller forgets to pre-check.
+
+import { safeFetch, type SafeFetchOptions } from "./ssrf-guard";
 
 export type DetectedPlatform =
   | "wordpress"
@@ -40,6 +46,8 @@ const FETCH_TIMEOUT_MS = 3000;
 export interface DetectOptions {
   /** Injectable fetch for testing. Defaults to global fetch. */
   fetchImpl?: typeof fetch;
+  /** Injectable DNS lookup for testing the SSRF guard. Defaults to node:dns. */
+  lookup?: SafeFetchOptions["lookup"];
 }
 
 // ---------------------------------------------------------------------------
@@ -264,16 +272,20 @@ export function normalizeUrl(input: string): URL | null {
 async function fetchHomepage(
   url: string,
   fetchImpl: typeof fetch,
+  lookup: SafeFetchOptions["lookup"],
 ): Promise<{ html: string | null; headers: Headers | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(url, {
-      method: "GET",
-      redirect: "manual",
-      headers: { "User-Agent": USER_AGENT },
-      signal: controller.signal,
-    });
+    const res = await safeFetch(
+      url,
+      {
+        method: "GET",
+        headers: { "User-Agent": USER_AGENT },
+        signal: controller.signal,
+      },
+      { fetchImpl, lookup },
+    );
     if (!res.ok) return { html: null, headers: null };
     const headers = res.headers;
     try {
@@ -292,16 +304,20 @@ async function fetchHomepage(
 async function fetchWpJson(
   origin: string,
   fetchImpl: typeof fetch,
+  lookup: SafeFetchOptions["lookup"],
 ): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(`${origin}/wp-json/`, {
-      method: "GET",
-      redirect: "manual",
-      headers: { "User-Agent": USER_AGENT },
-      signal: controller.signal,
-    });
+    const res = await safeFetch(
+      `${origin}/wp-json/`,
+      {
+        method: "GET",
+        headers: { "User-Agent": USER_AGENT },
+        signal: controller.signal,
+      },
+      { fetchImpl, lookup },
+    );
     if (!res.ok) return null;
     return await res.json(); // body read under the same abort timer
   } catch {
@@ -333,8 +349,8 @@ export async function detectPlatform(
   }
 
   const [homepageResult, wpJsonResult] = await Promise.allSettled([
-    fetchHomepage(normalized.toString(), fetchImpl),
-    fetchWpJson(normalized.origin, fetchImpl),
+    fetchHomepage(normalized.toString(), fetchImpl, options.lookup),
+    fetchWpJson(normalized.origin, fetchImpl, options.lookup),
   ]);
 
   const homepage =

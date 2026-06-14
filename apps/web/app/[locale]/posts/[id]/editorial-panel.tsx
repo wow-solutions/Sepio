@@ -217,7 +217,9 @@ export function EditorialPanel({
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onRewrite();
+            // Ignore Enter while an IME composition is active (Russian/CJK users
+            // confirming a candidate) — only submit on a real Enter (R-08).
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) onRewrite();
           }}
           placeholder={t("placeholder")}
           disabled={busy || disabled}

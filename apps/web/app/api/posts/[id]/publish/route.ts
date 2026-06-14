@@ -5,6 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { adapters, type PublishablePost, type PublishOutcome } from "@/lib/publishers";
 import { publishToLinkedIn } from "@/lib/publishers/linkedin";
+import {
+  applyPrimaryUrl,
+  pickPrimaryUrl,
+  hostedFirstGuard,
+  type Variant,
+} from "@/lib/kitchen/resolve-placeholders";
 
 // POST /api/posts/[id]/publish
 //
@@ -41,6 +47,7 @@ interface PostRow {
   content_markdown: string | null;
   cover_image_url: string | null;
   cover_image_alt: string | null;
+  content_group_id: string | null;
 }
 
 // Release a claimed post back to 'failed'. Captures the supabase error (which
@@ -112,7 +119,7 @@ export async function POST(
   const { data: postData } = await db
     .from("posts")
     .select(
-      "id, brand_id, platform, language, status, title, slug, excerpt, content_text, content_markdown, cover_image_url, cover_image_alt",
+      "id, brand_id, platform, language, status, title, slug, excerpt, content_text, content_markdown, cover_image_url, cover_image_alt, content_group_id",
     )
     .eq("id", postId)
     .maybeSingle();
@@ -173,6 +180,40 @@ export async function POST(
     return jsonError({ error: `Platform ${post.platform} not yet supported` }, 400);
   }
 
+  // 2.5 Cross-link resolution (Content Kitchen). A social variant's body may embed
+  //     the literal {{PRIMARY_URL}} token pointing back at the fuller blog article.
+  //     Substitute it with the published blog URL, and refuse to publish a social
+  //     variant before its hosted foundation exists. Done BEFORE the claim so a
+  //     guard failure needs no claim release.
+  let resolvedText = post.content_text;
+  let resolvedPublishable = publishable;
+  if (post.platform !== "hosted" && post.content_group_id) {
+    const { data: sibRaw } = await db
+      .from("posts")
+      .select("platform, status, external_post_url")
+      .eq("content_group_id", post.content_group_id);
+    const siblings = (sibRaw ?? []) as Variant[];
+
+    const guard = hostedFirstGuard(post.platform, siblings);
+    if (!guard.ok) return jsonError({ error: guard.reason }, 409);
+
+    const appOrigin = new URL(request.url).origin;
+    const primaryUrl = pickPrimaryUrl(siblings, appOrigin);
+    resolvedText =
+      post.content_text !== null ? applyPrimaryUrl(post.content_text, primaryUrl) : null;
+    resolvedPublishable = {
+      ...publishable,
+      content_text:
+        publishable.content_text !== null
+          ? applyPrimaryUrl(publishable.content_text, primaryUrl)
+          : null,
+      content_markdown:
+        publishable.content_markdown !== null
+          ? applyPrimaryUrl(publishable.content_markdown, primaryUrl)
+          : null,
+    };
+  }
+
   // 3. Atomically CLAIM the post for publishing — prevents double-publish when
   //    two requests race. Only one update will match status<>published/publishing.
   const { data: claimed } = await db
@@ -192,19 +233,19 @@ export async function POST(
     if (post.platform === "linkedin") {
       const result = await publishToLinkedIn({
         brandId: post.brand_id,
-        contentText: post.content_text as string,
+        contentText: resolvedText as string,
       });
       outcome = result.outcome;
       oauthTokenId = result.oauthTokenId;
     } else if (post.platform === "hosted") {
       outcome = await adapters.hosted.publish({
-        post: publishable,
+        post: resolvedPublishable,
         brandId: post.brand_id,
         config: {},
       });
     } else {
       outcome = await adapters.wordpress.publish({
-        post: publishable,
+        post: resolvedPublishable,
         brandId: post.brand_id,
         config: { vaultSecretId: wpVaultSecretId },
       });

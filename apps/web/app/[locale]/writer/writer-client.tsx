@@ -125,6 +125,12 @@ export function WriterClient({
   // The writer always produces the blog article — the foundation of the content
   // kitchen (everything else fans out from it). Channel selection lives in the
   // rail, so there's no in-writer format switch.
+  //
+  // DORMANT (R-06): `outputFormat` is pinned to "blog", so every `!selectorIsBlog`
+  // branch below (article-mode hydration, LinkedIn-from-article generation, the
+  // article tab) is currently unreachable. It is kept on purpose — the in-writer
+  // social/article path returns when direct social authoring ships (tracked with
+  // the cross-link work, R-01). Do NOT treat the `!selectorIsBlog` code as live.
   const outputFormat: OutputFormat = "blog";
   const [topic, setTopic] = useState("");
   const [sourceText, setSourceText] = useState("");

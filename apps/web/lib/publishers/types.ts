@@ -34,6 +34,10 @@ export interface PublishContext {
   brandId: string;
   // adapter-specific config resolved by the caller (e.g. brand slug, vault secret id)
   config: Record<string, unknown>;
+  // Test seams (omitted in production → real fetch / DNS). Adapters that fetch a
+  // user-controlled URL pass these to safeFetch so the publish path is unit-testable.
+  fetchImpl?: typeof fetch;
+  lookup?: (hostname: string) => Promise<{ address: string }[]>;
 }
 
 export interface PublishAdapter {

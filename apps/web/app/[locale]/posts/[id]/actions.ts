@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
   ApplyRuleSchema,
@@ -9,6 +10,7 @@ import {
   type ApplyRule,
 } from "@/lib/brand-rules/rule-validation";
 import { bodyUpdateForPlatform, maxBodyChars } from "@/lib/post-body";
+import { bumpSourceVersionIfSource } from "@/lib/kitchen/source-version";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -27,12 +29,22 @@ export async function updatePostContent(
 
   // Read platform too: a blog/hosted post writes content_markdown, not
   // content_text (else publish ships the stale original). lib/post-body owns
-  // the split + the per-platform length cap.
-  const { data: post } = await supabase
+  // the split + the per-platform length cap. content_group_id/variant_state drive
+  // the source_version bump (R-27); those kitchen columns aren't in the generated
+  // types yet → read via an untyped client (RLS still scopes to the user).
+  const db = supabase as unknown as SupabaseClient;
+  const { data: postRaw } = await db
     .from("posts")
-    .select("id, status, platform")
+    .select("id, status, platform, content_group_id, variant_state")
     .eq("id", postId)
     .maybeSingle();
+  const post = postRaw as {
+    id: string;
+    status: string;
+    platform: string;
+    content_group_id: string | null;
+    variant_state: string | null;
+  } | null;
   if (!post) return { ok: false, error: "Post not found" };
   if (post.status === "published") {
     return { ok: false, error: "Cannot edit a published post" };
@@ -52,6 +64,9 @@ export async function updatePostContent(
     .eq("id", postId);
 
   if (error) return { ok: false, error: error.message };
+
+  // A kitchen SOURCE edit invalidates its channel variants.
+  await bumpSourceVersionIfSource(db, post);
 
   revalidatePath(`/posts/${postId}`);
   revalidatePath("/posts");
@@ -96,11 +111,23 @@ export async function applyBrandRule(input: {
   if (!user) return { ok: false, error: "Not signed in" };
 
   // platform drives the body column (content_markdown for hosted) + length cap.
-  const { data: post } = await supabase
+  // content_group_id/variant_state drive the source_version bump (R-27) on the
+  // rewrite path — kitchen columns aren't in the generated types, so read via an
+  // untyped client (RLS still scopes to the user).
+  const db = supabase as unknown as SupabaseClient;
+  const { data: postRaw } = await db
     .from("posts")
-    .select("id, brand_id, status, platform")
+    .select("id, brand_id, status, platform, content_group_id, variant_state")
     .eq("id", input.postId)
     .maybeSingle();
+  const post = postRaw as {
+    id: string;
+    brand_id: string;
+    status: string;
+    platform: string;
+    content_group_id: string | null;
+    variant_state: string | null;
+  } | null;
   if (!post) return { ok: false, error: "Post not found" };
   if (rewritten && rewritten.length > maxBodyChars(post.platform)) {
     return { ok: false, error: `Max ${maxBodyChars(post.platform)} characters` };
@@ -191,6 +218,8 @@ export async function applyBrandRule(input: {
       return { ok: true, postUpdated: false };
     }
     postUpdated = true;
+    // A kitchen SOURCE rewrite invalidates its channel variants (R-27).
+    await bumpSourceVersionIfSource(db, post);
   }
 
   revalidatePath(`/posts/${post.id}`);

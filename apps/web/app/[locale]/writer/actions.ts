@@ -1,8 +1,10 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/supabase/database.types";
 import { bodyUpdateForPlatform, maxBodyChars } from "@/lib/post-body";
+import { bumpSourceVersionIfSource } from "@/lib/kitchen/source-version";
 
 // Save edits to a post. Status unchanged. Detection score is NOT re-checked
 // here — the right-rail score may go stale until the user re-generates or
@@ -32,12 +34,21 @@ export async function saveDraft(
   if (!user) return { ok: false, error: "Not signed in" };
 
   // Read platform + status: platform picks the body column/cap, status guards
-  // against editing a published post. RLS scopes this to the user's own posts.
-  const { data: post, error: readErr } = await supabase
+  // against editing a published post. content_group_id/variant_state drive the
+  // source_version bump (R-27) — those kitchen columns aren't in the generated
+  // types yet, so read through an untyped client (RLS still scopes to the user).
+  const db = supabase as unknown as SupabaseClient;
+  const { data: postRaw, error: readErr } = await db
     .from("posts")
-    .select("platform, status")
+    .select("platform, status, content_group_id, variant_state")
     .eq("id", postId)
     .maybeSingle();
+  const post = postRaw as {
+    platform: string;
+    status: string;
+    content_group_id: string | null;
+    variant_state: string | null;
+  } | null;
   if (readErr) return { ok: false, error: readErr.message };
   if (!post) return { ok: false, error: "Post not found" };
   if (post.status === "published") {
@@ -69,5 +80,8 @@ export async function saveDraft(
     .neq("status", "published");
 
   if (error) return { ok: false, error: error.message };
+
+  // If this post is a kitchen SOURCE, its edit invalidates the channel variants.
+  await bumpSourceVersionIfSource(db, post);
   return { ok: true };
 }

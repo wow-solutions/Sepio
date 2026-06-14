@@ -310,7 +310,15 @@ export function KitchenCenter({
             flexWrap: "wrap",
           }}
         >
-          <button type="button" onClick={() => navigator.clipboard?.writeText(draft)} style={btn(false, false)}>
+          <button
+            type="button"
+            onClick={() => {
+              // Swallow the rejection (insecure context / denied permission) so it
+              // doesn't surface as an unhandled promise rejection (R-25).
+              void navigator.clipboard?.writeText(draft).catch(() => {});
+            }}
+            style={btn(false, false)}
+          >
             {t("kitchen.copy")}
           </button>
           {!isPublished && (

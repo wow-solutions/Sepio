@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 import { readSecret, VaultError } from "@/lib/vault";
-import { assertPublicHttpUrl } from "@/lib/ssrf-guard";
+import { assertPublicHttpUrl, safeFetch } from "@/lib/ssrf-guard";
 import type { PublishAdapter, PublishContext, PublishOutcome } from "./types";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -99,9 +99,10 @@ export const wordPressAdapter: PublishAdapter = {
     if (post.slug) body.slug = post.slug;
 
     // SSRF guard: the site_url comes from Vault but was user-supplied — re-verify
-    // it points at a public host before fetching (defense at the publish boundary).
+    // it points at a public host before fetching. safeFetch re-validates too, but
+    // this gives a clearer "reconnect" error than a generic SsrfError throw.
     try {
-      await assertPublicHttpUrl(cred.site_url);
+      await assertPublicHttpUrl(cred.site_url, { lookup: ctx.lookup });
     } catch {
       return {
         ok: false,
@@ -117,16 +118,19 @@ export const wordPressAdapter: PublishAdapter = {
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let res: Response;
     try {
-      res = await fetch(url, {
-        method: "POST",
-        redirect: "manual",
-        headers: {
-          Authorization: basicAuthHeader(cred),
-          "Content-Type": "application/json",
+      res = await safeFetch(
+        url,
+        {
+          method: "POST",
+          headers: {
+            Authorization: basicAuthHeader(cred),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
         },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+        { fetchImpl: ctx.fetchImpl, lookup: ctx.lookup },
+      );
     } catch (err) {
       const message =
         err instanceof Error && err.name === "AbortError"
@@ -183,11 +187,16 @@ export const wordPressAdapter: PublishAdapter = {
       };
     }
 
+    // Unhandled status. The raw WP body can carry internal paths / stack traces /
+    // plugin versions, so log it server-side but never forward it to the client.
     const detail = await res.text().catch(() => "");
+    if (detail) {
+      console.error(`WordPress publish failed (${res.status}): ${detail.slice(0, 500)}`);
+    }
     return {
       ok: false,
       status: res.status,
-      message: `WordPress publish failed (${res.status})${detail ? `: ${detail.slice(0, 200)}` : ""}`,
+      message: `WordPress rejected the request (status ${res.status})`,
     };
   },
 };
@@ -197,24 +206,18 @@ export const wordPressAdapter: PublishAdapter = {
 // means the app password authenticates. Returns false on any non-2xx/error.
 export async function validateWordPressCredential(
   cred: WordPressCredential,
+  options?: { fetchImpl?: typeof fetch; lookup?: (hostname: string) => Promise<{ address: string }[]> },
 ): Promise<boolean> {
-  // SSRF guard before any fetch of the user-supplied site URL.
-  try {
-    await assertPublicHttpUrl(cred.site_url);
-  } catch {
-    return false;
-  }
-
   const url = `${restBase(cred.site_url)}/wp-json/wp/v2/users/me`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "manual",
-      headers: { Authorization: basicAuthHeader(cred) },
-      signal: controller.signal,
-    });
+    // safeFetch validates the user-supplied site URL (public host) before the GET.
+    const res = await safeFetch(
+      url,
+      { method: "GET", headers: { Authorization: basicAuthHeader(cred) }, signal: controller.signal },
+      { fetchImpl: options?.fetchImpl, lookup: options?.lookup },
+    );
     return res.ok;
   } catch {
     return false;

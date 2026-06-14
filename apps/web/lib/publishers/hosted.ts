@@ -58,6 +58,15 @@ export const hostedAdapter: PublishAdapter = {
     }
 
     const bodyMarkdown = post.content_markdown ?? post.content_text;
+    // Refuse to publish an empty article — mirrors the LinkedIn empty-body guard
+    // in the publish route. Without this we'd push a live blog page with no body.
+    if (!bodyMarkdown || !bodyMarkdown.trim()) {
+      return {
+        ok: false,
+        status: 400,
+        message: "Article body is empty",
+      };
+    }
 
     // Service-role write: this is a server-side publish that bypasses the
     // user-scoped RLS path. brand_blog_posts is owner-scoped + public-read.

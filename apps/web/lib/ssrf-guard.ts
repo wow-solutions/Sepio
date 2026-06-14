@@ -4,18 +4,27 @@
 // and make our server fetch them. Sepio holds client secrets — this boundary is
 // part of the trust pitch, not optional.
 //
-// Use: `const u = await assertPublicHttpUrl(rawUrl)` before any server fetch, and
-// fetch with `redirect: "manual"` (a 3xx could redirect to an internal host).
+// Use: prefer `safeFetch(rawUrl, init)` (below) for user-controlled fetches — it
+// validates + forces manual redirects + re-validates each hop in one place. Use
+// `assertPublicHttpUrl(rawUrl)` directly only when you need the parsed URL without
+// fetching.
 //
-// KNOWN RESIDUAL (accepted for now): TOCTOU / DNS rebinding. We resolve DNS here,
-// then `fetch` resolves again — a hostile resolver could return a public IP to
-// this check and a private IP to the fetch. A complete fix needs a pinned-IP
-// dispatcher (resolve once, connect to that exact address, preserve Host/SNI).
-// Deferred as over-engineering for the current threat model; the guard + manual
-// redirects close the common cases. TODO: pinned-IP fetch when this matters.
+// KNOWN RESIDUAL (accepted, ADR-0023): TOCTOU / DNS rebinding. We resolve DNS in
+// the guard, then `fetch` resolves again — a hostile resolver could return a
+// public IP to this check and a private IP to the fetch. The airtight fix is a
+// pinned-IP dispatcher (resolve once, connect to that exact address, preserve
+// Host/SNI); it needs the `undici` dependency and an un-unit-testable network
+// path, so it's consciously deferred. The guard + manual redirects close every
+// case that doesn't require an actively hostile resolver.
 
-import { lookup } from "node:dns/promises";
+import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
+
+export interface AssertUrlOptions {
+  /** Injectable DNS lookup for testing. Returns every resolved address for the
+   *  hostname. Defaults to node:dns/promises lookup with `{ all: true }`. */
+  lookup?: (hostname: string) => Promise<{ address: string }[]>;
+}
 
 export class SsrfError extends Error {
   constructor(message: string) {
@@ -77,7 +86,7 @@ function ipIsPrivate(ip: string): boolean {
 // Validates a user-supplied URL is a public http(s) endpoint. Throws SsrfError
 // otherwise. Resolves DNS and rejects if the host points at a private address
 // (DNS-rebinding defense). Returns the parsed URL on success.
-export async function assertPublicHttpUrl(raw: string): Promise<URL> {
+export async function assertPublicHttpUrl(raw: string, options?: AssertUrlOptions): Promise<URL> {
   let u: URL;
   try {
     u = new URL(raw.trim());
@@ -97,9 +106,10 @@ export async function assertPublicHttpUrl(raw: string): Promise<URL> {
     return u;
   }
   // Hostname → resolve and reject if ANY answer is private.
+  const lookupFn = options?.lookup ?? ((h: string) => dnsLookup(h, { all: true }));
   let addrs: { address: string }[];
   try {
-    addrs = await lookup(host, { all: true });
+    addrs = await lookupFn(host);
   } catch {
     throw new SsrfError(`dns resolution failed: ${host}`);
   }
@@ -111,11 +121,58 @@ export async function assertPublicHttpUrl(raw: string): Promise<URL> {
 }
 
 // Convenience: boolean form for call sites that just want to skip on failure.
-export async function isPublicHttpUrl(raw: string): Promise<boolean> {
+export async function isPublicHttpUrl(raw: string, options?: AssertUrlOptions): Promise<boolean> {
   try {
-    await assertPublicHttpUrl(raw);
+    await assertPublicHttpUrl(raw, options);
     return true;
   } catch {
     return false;
   }
+}
+
+export interface SafeFetchOptions extends AssertUrlOptions {
+  /** Max redirect hops to follow before giving up. Default 5. */
+  maxHops?: number;
+  /** Injectable fetch for testing. Defaults to global fetch. */
+  fetchImpl?: typeof fetch;
+}
+
+// Centralized fetch for USER-CONTROLLED URLs. Every call site that fetches a
+// brand/WordPress URL must go through this rather than raw fetch — it is the
+// single place the safe pattern lives, so a forgotten `redirect: "manual"` can't
+// reintroduce redirect-SSRF. It validates the URL (assertPublicHttpUrl) before
+// every hop, forces manual redirects, and re-validates each 3xx Location against
+// the same guard (bounded hops). Returns the final non-3xx response.
+//
+// RESIDUAL (accepted, see file header): still re-resolves DNS at fetch time, so a
+// hostile resolver retains a TOCTOU window. The airtight fix is a pinned-IP
+// dispatcher — consciously deferred, see ADR-0023.
+export async function safeFetch(
+  url: string | URL,
+  init?: Omit<RequestInit, "redirect">,
+  options?: SafeFetchOptions,
+): Promise<Response> {
+  const maxHops = options?.maxHops ?? 5;
+  const doFetch = options?.fetchImpl ?? fetch;
+  let currentUrl = typeof url === "string" ? url : url.toString();
+
+  for (let hop = 0; hop <= maxHops; hop++) {
+    // Re-validate before every hop, including each redirect target.
+    await assertPublicHttpUrl(currentUrl, { lookup: options?.lookup });
+
+    const res = await doFetch(currentUrl, { ...init, redirect: "manual" });
+
+    if (res.status < 300 || res.status >= 400) return res;
+
+    const location = res.headers.get("location");
+    if (!location) return res; // 3xx without Location — hand back as-is.
+
+    try {
+      currentUrl = new URL(location, currentUrl).toString();
+    } catch {
+      throw new SsrfError(`invalid redirect location: ${location}`);
+    }
+  }
+
+  throw new SsrfError(`too many redirects (>${maxHops})`);
 }
