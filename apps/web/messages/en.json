@@ -117,6 +117,32 @@
       "disconnect": "Disconnect"
     },
     "settingsLink": "Edit brand settings →",
+    "clientBrain": {
+      "header": "Client Brain",
+      "subtitle": "Studies the client's own site and grounds generation in their real services, service areas, pricing, and proof.",
+      "intro": "Facts studied from {website}. Re-run after the site changes.",
+      "noWebsiteHint": "Set this brand's website to study its facts.",
+      "study": "Study site",
+      "restudy": "Re-study",
+      "running": "Studying…",
+      "runningStatus": "Reading the site and extracting facts",
+      "done": "Done — facts below.",
+      "servicesLabel": "Services",
+      "locationsLabel": "Service areas",
+      "pricingLabel": "Pricing",
+      "proofLabel": "Proof to cite",
+      "error": {
+        "noWebsite": "This brand has no website set.",
+        "invalidUrl": "The website address isn't reachable or isn't public.",
+        "siteUnreachable": "Could not reach the site. Check the URL and try again.",
+        "emptySite": "Found no readable text on the homepage (it may be a script-rendered site).",
+        "extractFailed": "Could not extract facts from the site. Try again.",
+        "persistFailed": "Could not save the facts. Try again.",
+        "notSignedIn": "You're signed out. Refresh and try again.",
+        "brandNotFound": "Brand not found.",
+        "network": "Network error. Try again."
+      }
+    },
     "marketBrain": {
       "header": "Market Brain",
       "subtitle": "Competitor differentiation that grounds generation. Updated weekly, or recompute on demand.",

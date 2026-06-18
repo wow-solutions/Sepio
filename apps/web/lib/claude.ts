@@ -89,9 +89,12 @@ export function buildBrandContext(
     "You are a content writer for a specific brand. Write everything in the brand's voice.",
     // Language instruction is intentionally near the top — Claude follows
     // it more reliably than if it were buried. Stated explicitly so the
-    // model ignores the language of the topic hint (which may be entered
-    // in any language by the user).
-    `Write the ENTIRE output in ${langName}, regardless of the language of the topic hint, brief, or source article. Never switch to or mirror the input language.`,
+    // model ignores the language of the topic hint (entered in any language)
+    // AND the voice samples below. An agency may write in its native language
+    // (en/ru) while the brand publishes in the client's language (e.g. Spanish);
+    // the voice sample teaches STYLE, never the output language.
+    `Write the ENTIRE output in ${langName}, regardless of the language of the topic hint, brief, source article, OR the voice samples below. Never switch to or mirror the input language.`,
+    `The voice samples show HOW this brand writes — tone, rhythm, sentence shape, vocabulary register. Emulate that style, but if a sample is written in another language, do NOT mirror its language: render the style in ${langName}.`,
     "Output ONLY the content itself. No preamble, no surrounding quotes, no 'Here is...' framing.",
     // Anti-tell: the model defaults to templated openers ("Most [people] I talk
     // to…") which read as AI-written and make a feed of posts look identical.

@@ -10,21 +10,8 @@
 // re-publish updates the existing row in place rather than erroring.
 
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import { slugify } from "@/lib/slug";
 import type { PublishAdapter, PublishContext, PublishOutcome } from "./types";
-
-// Local slugify. blog-actions.ts has an equivalent but it is not exported and
-// editing existing files is out of scope here. Same rules: lowercase, strip
-// accents, non-alphanumerics -> '-', collapse/trim dashes, cap length.
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .normalize("NFKD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 120);
-}
 
 // Public render route is locale-prefixed (app/[locale]/p/[brandId]/[slug]).
 // pt/fr posts have no app route yet (known gap) — render currently covers en/es/ru.

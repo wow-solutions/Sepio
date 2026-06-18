@@ -1043,8 +1043,18 @@ export function WriterClient({
               applying a rewrite over unsaved edits would clobber them. Applying
               pushes the new body back via onApplied (the writer owns the live
               editor). */}
-          {betaAccess && !lockedPublished && postId && !blogPreview && (
-            <div style={{ maxWidth: "var(--editor-max-w)", margin: "8px auto 0" }}>
+          {betaAccess && !lockedPublished && postId && (
+            // Hide in Preview, do NOT unmount: the panel holds its own state
+            // (typed instruction, rewrite proposal, proposed rule). Unmounting
+            // on the Preview toggle destroyed in-progress "Teach Sepio" work;
+            // display:none keeps it mounted so a peek at the preview is safe.
+            <div
+              style={{
+                maxWidth: "var(--editor-max-w)",
+                margin: "8px auto 0",
+                display: blogPreview ? "none" : "block",
+              }}
+            >
               <EditorialPanel
                 postId={postId}
                 brandId={brandId}

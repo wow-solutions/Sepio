@@ -9,6 +9,9 @@ import {
   ClaudeError,
 } from "@/lib/claude";
 import { parseBlogArticleOutput } from "@/lib/_private/blog-article";
+import { resolveBlogLanguages } from "@/lib/blog-languages";
+import { slugify } from "@/lib/slug";
+import { clientBrainContextBlocks } from "@/lib/client-brain/client-brain-context";
 import { ANGLE_IDS, ANGLES_USING_ARTICLE } from "@/lib/angles-shared";
 import type {
   Json,
@@ -137,7 +140,7 @@ export async function POST(request: Request): Promise<Response> {
   // Fetch brand + config (RLS prevents reading another user's brand).
   const { data: brand } = await supabase
     .from("brands")
-    .select("id, account_id, primary_language, name")
+    .select("id, account_id, primary_language, additional_languages, name")
     .eq("id", brand_id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -247,8 +250,27 @@ export async function POST(request: Request): Promise<Response> {
     required_phrases: mergedWords.required,
   };
 
+  // Client Brain (site-grounded facts): the brand's services/locations/pricing
+  // live on brand_configs (already in `config`); proof_items is a separate table.
+  // Read it owner-scoped; on error log + skip (never block generation) — same
+  // discipline as the Market Brain read. Empty facts → block renders "" → nothing
+  // injected (cache-warm), so a brand that never studied its site is unaffected.
+  const { data: proofRows, error: proofErr } = await supabase
+    .from("proof_items")
+    .select("kind, body, source, verifiable")
+    .eq("brand_id", brand_id);
+  if (proofErr) {
+    console.error("proof_items read failed:", proofErr.message);
+  }
+
   const extraContext = [
     ...differentiationContextBlocks(diffErr ? null : diffRow),
+    ...clientBrainContextBlocks({
+      services: config.services,
+      locations: config.locations,
+      pricing: config.pricing,
+      proofItems: proofErr ? [] : (proofRows ?? []),
+    }),
     ...renderVoiceNoteBlocks(rules),
   ];
 
@@ -264,95 +286,134 @@ export async function POST(request: Request): Promise<Response> {
       return jsonError({ error: "A topic is required for a blog article" }, 400);
     }
 
-    let blog;
-    try {
-      blog = await generateBlogArticle(
-        configForGen,
-        brand.primary_language,
-        brief,
-        { extraContext, angle, stance: effectiveStance },
-      );
-    } catch (err) {
-      const msg = err instanceof ClaudeError ? err.message : "Generate failed";
-      const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
-      return jsonError({ error: msg, stage: "generate" }, status);
-    }
-
-    const { title: parsedTitle, body, description } = parseBlogArticleOutput(
-      blog.text,
-    );
-    // hostedAdapter requires a non-empty title at publish; fall back to the
-    // brief if the model skipped the TITLE line. The user can edit it in the
-    // writer before publishing.
-    const title = parsedTitle ?? brief.slice(0, 200);
-
     const initialStatus =
       config.approval_mode === "auto" ? "draft" : "pending_approval";
     const sourceType: "manual" | "auto_research" = topic_candidate_id
       ? "auto_research"
       : "manual";
 
-    // Markdown is canonical for a blog; content_text stays null (it's the
-    // LinkedIn short-text column — a 2000-word article does not belong there).
-    let postId: string;
-    if (topic_candidate_id) {
-      // Atomic insert + candidate-mark via the extended RPC (D12). content_text
-      // and detection_* are passed NULL explicitly — they precede the first
-      // DEFAULT param in the function signature, so they are required, not
-      // optional. slug is omitted (it has a default). database.types.ts lags the
-      // migration (T-types): the generated Args know neither the new article
-      // params nor the nullable content_text/detection_*, so cast through the
-      // generated Args type until the types are regenerated.
-      const rpcArgs = {
-        p_brand_id: brand_id,
-        p_platform: "hosted",
-        p_language: brand.primary_language,
-        p_content_text: null,
-        p_detection_score: null,
-        p_detection_breakdown: null,
-        p_status: initialStatus,
-        p_source_type: sourceType,
-        p_candidate_id: topic_candidate_id,
-        p_research_topic: resolvedCandidateText ?? undefined,
-        p_title: title,
-        p_excerpt: description ?? undefined,
-        p_content_markdown: body,
-      };
-      const { data: rpcPost, error: rpcErr } = await supabase.rpc(
-        "insert_post_and_mark_candidate",
-        rpcArgs as unknown as Database["public"]["Functions"]["insert_post_and_mark_candidate"]["Args"],
+    // Blog (and ONLY blog) fans out across every brand language; all other
+    // formats stay primary-only. Each language is its own hosted `posts` row;
+    // the rows share a slug so they land as locale-siblings of one article on
+    // the hosted blog (brand_blog_posts unique (brand_id, slug, locale)).
+    const languages = resolveBlogLanguages(
+      brand.primary_language,
+      brand.additional_languages,
+    );
+    if (languages.length === 0) {
+      return jsonError(
+        { error: "Brand has no primary language set", stage: "generate" },
+        500,
       );
-      if (rpcErr || !rpcPost) {
-        return jsonError(
-          {
-            error: rpcErr?.message ?? "Failed to save article (RPC)",
-            stage: "save",
-          },
-          500,
-        );
+    }
+
+    type BlogVariant = {
+      language: string;
+      title: string;
+      body: string;
+      excerpt: string | null;
+      cacheReadTokens: number;
+    };
+
+    // Generate one article in a single language. Throws ClaudeError on failure.
+    const generateOne = async (language: string): Promise<BlogVariant> => {
+      const blog = await generateBlogArticle(
+        configForGen,
+        language,
+        brief,
+        { extraContext, angle, stance: effectiveStance },
+      );
+      const { title: parsedTitle, body, description } =
+        parseBlogArticleOutput(blog.text);
+      return {
+        language,
+        // hostedAdapter requires a non-empty title at publish; fall back to the
+        // brief if the model skipped the TITLE line. Editable in the writer.
+        title: parsedTitle ?? brief.slice(0, 200),
+        body,
+        excerpt: description,
+        cacheReadTokens: blog.usage.cache_read_input_tokens,
+      };
+    };
+
+    // The PRIMARY language drives the shared slug + the writer response, so it
+    // is generated first and its failure is fatal (nothing is saved).
+    let primaryVariant: BlogVariant;
+    try {
+      primaryVariant = await generateOne(languages[0]);
+    } catch (err) {
+      const msg = err instanceof ClaudeError ? err.message : "Generate failed";
+      const status =
+        err instanceof ClaudeError && err.status === 401 ? 500 : 502;
+      return jsonError({ error: msg, stage: "generate" }, status);
+    }
+
+    // Shared slug for all language siblings. Empty (e.g. a non-latin primary
+    // title) → null: each post then derives its own slug at publish (no sibling
+    // link, acceptable fallback for a brand whose primary script has no slug).
+    const sharedSlug = slugify(primaryVariant.title) || null;
+
+    // Additional languages are best-effort — one bad language must not sink the
+    // whole article (the primary is already in hand).
+    const additionalVariants: BlogVariant[] = [];
+    for (const language of languages.slice(1)) {
+      try {
+        additionalVariants.push(await generateOne(language));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[generate] blog language '${language}' failed:`, msg);
       }
-      const row = Array.isArray(rpcPost)
-        ? (rpcPost[0] as { id: string } | undefined)
-        : (rpcPost as { id: string });
-      if (!row?.id) {
-        return jsonError(
-          { error: "RPC returned no post id", stage: "save" },
-          500,
+    }
+
+    // Insert one hosted post per generated language. Markdown is canonical for a
+    // blog; content_text stays null (it's the LinkedIn short-text column). The
+    // primary uses the atomic insert+mark-candidate RPC when a candidate drove
+    // it (marks the candidate used exactly ONCE); additional languages are plain
+    // inserts (no second mark). database.types.ts lags the migration (T-types),
+    // so the RPC Args and the posts Insert row are cast to the generated types.
+    const insertBlog = async (
+      variant: BlogVariant,
+      markCandidate: boolean,
+    ): Promise<{ id: string } | { error: string }> => {
+      if (markCandidate && topic_candidate_id) {
+        const rpcArgs = {
+          p_brand_id: brand_id,
+          p_platform: "hosted",
+          p_language: variant.language,
+          p_content_text: null,
+          p_detection_score: null,
+          p_detection_breakdown: null,
+          p_status: initialStatus,
+          p_source_type: sourceType,
+          p_candidate_id: topic_candidate_id,
+          p_research_topic: resolvedCandidateText ?? undefined,
+          p_title: variant.title,
+          p_slug: sharedSlug ?? undefined,
+          p_excerpt: variant.excerpt ?? undefined,
+          p_content_markdown: variant.body,
+        };
+        const { data: rpcPost, error: rpcErr } = await supabase.rpc(
+          "insert_post_and_mark_candidate",
+          rpcArgs as unknown as Database["public"]["Functions"]["insert_post_and_mark_candidate"]["Args"],
         );
+        if (rpcErr || !rpcPost) {
+          return { error: rpcErr?.message ?? "Failed to save article (RPC)" };
+        }
+        const row = Array.isArray(rpcPost)
+          ? (rpcPost[0] as { id: string } | undefined)
+          : (rpcPost as { id: string });
+        if (!row?.id) return { error: "RPC returned no post id" };
+        return { id: row.id };
       }
-      postId = row.id;
-    } else {
-      // title/slug/excerpt were added in 20260609120000; database.types.ts lags
-      // (T-types), so cast the row to the generated Insert type to include them.
       const insertRow = {
         brand_id,
         platform: "hosted",
-        language: brand.primary_language,
+        language: variant.language,
         content_text: null,
-        content_markdown: body,
-        title,
-        slug: null,
-        excerpt: description,
+        content_markdown: variant.body,
+        title: variant.title,
+        slug: sharedSlug,
+        excerpt: variant.excerpt,
         status: initialStatus,
         source_type: sourceType,
       };
@@ -362,22 +423,42 @@ export async function POST(request: Request): Promise<Response> {
         .select("id")
         .single();
       if (postErr || !post) {
-        return jsonError(
-          { error: postErr?.message ?? "Failed to save article", stage: "save" },
-          500,
-        );
+        return { error: postErr?.message ?? "Failed to save article" };
       }
-      postId = post.id;
+      return { id: post.id };
+    };
+
+    const primaryInsert = await insertBlog(primaryVariant, true);
+    if ("error" in primaryInsert) {
+      return jsonError({ error: primaryInsert.error, stage: "save" }, 500);
+    }
+    const postId = primaryInsert.id;
+
+    // Siblings are best-effort: a failed sibling save is logged, not fatal —
+    // the primary article is already saved and usable.
+    const siblings: Array<{ language: string; post_id: string }> = [];
+    for (const variant of additionalVariants) {
+      const ins = await insertBlog(variant, false);
+      if ("error" in ins) {
+        console.error(
+          `[generate] blog sibling '${variant.language}' save failed:`,
+          ins.error,
+        );
+        continue;
+      }
+      siblings.push({ language: variant.language, post_id: ins.id });
     }
 
     return Response.json({
       post_id: postId,
-      content: body,
+      content: primaryVariant.body,
       platform: "hosted",
-      title,
-      excerpt: description,
+      title: primaryVariant.title,
+      excerpt: primaryVariant.excerpt,
       status: initialStatus,
-      cache_read_tokens: blog.usage.cache_read_input_tokens,
+      language: primaryVariant.language,
+      siblings,
+      cache_read_tokens: primaryVariant.cacheReadTokens,
       grounded: false,
       source: null,
     });

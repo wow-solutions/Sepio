@@ -15,6 +15,7 @@ import { getAuthor } from "@/lib/authors";
 import { generateBlogArticle, ClaudeError, type BrandConfigRow } from "@/lib/claude";
 import { researchBlogKeywords } from "@/lib/_private/blog-keyword-research";
 import type { KeywordIdea } from "@/lib/_private/dataforseo-keywords";
+import { slugify } from "@/lib/slug";
 
 // blog_posts isn't in database.types.ts yet (types weren't regenerated after
 // PR1 — fast-follow). The typed client narrows .from() to the known-table union
@@ -47,18 +48,6 @@ async function requireBlogAdmin(
   return { userId: user.id };
 }
 
-// "Hello World" -> "hello-world". Used on create; slug is immutable after the
-// first publish (recon C: v1 = immutable, not redirect).
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .normalize("NFKD")
-    .replace(/\p{Diacritic}/gu, "") // strip diacritics
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 120);
-}
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 

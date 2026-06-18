@@ -12,6 +12,8 @@ import { disconnectLinkedIn, detectPlatformForBrand } from "./actions";
 import { CompetitorsPanel } from "./competitors-panel";
 import { RulesPanel, type BrandRuleRow } from "./rules-panel";
 import { WordPressConnect } from "./wordpress-connect";
+import { ClientBrainPanel } from "./client-brain-panel";
+import { coerceClientBrain } from "@/lib/client-brain/schema";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -79,6 +81,25 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
   };
   const effectivePlatform = site.platform_override ?? site.detected_platform ?? null;
   const recommended = recommendedMethod(effectivePlatform);
+
+  // Client Brain facts (ungated). Services/locations/pricing live on the config
+  // row; proof_items is its own table. Both RLS-scoped. Coerce the raw jsonb at
+  // the read boundary (drops malformed entries) before display.
+  const { data: cbConfig } = await supabase
+    .from("brand_configs")
+    .select("services, locations, pricing")
+    .eq("brand_id", brandId)
+    .maybeSingle();
+  const { data: proofRows } = await supabase
+    .from("proof_items")
+    .select("kind, body, source, verifiable")
+    .eq("brand_id", brandId);
+  const clientBrainFacts = coerceClientBrain({
+    services: cbConfig?.services,
+    locations: cbConfig?.locations,
+    pricing: cbConfig?.pricing,
+    proofItems: proofRows ?? [],
+  });
 
   const { data: account } = await supabase
     .from("accounts")
@@ -429,6 +450,27 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
             /p/{brand.id}
           </p>
         </div>
+
+        {/* Client Brain — study the client's site → ground generation (ungated) */}
+        <h2
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: "var(--ink)",
+            margin: "40px 0 4px",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          {t("clientBrain.header")}
+        </h2>
+        <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: "0 0 16px" }}>
+          {t("clientBrain.subtitle")}
+        </p>
+        <ClientBrainPanel
+          brandId={brand.id}
+          website={site.website_url ?? null}
+          facts={clientBrainFacts}
+        />
 
         {/* Market Brain (gated by beta_access) */}
         {betaAccess && (

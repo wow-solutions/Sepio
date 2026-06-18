@@ -116,6 +116,21 @@ describe("buildBrandContext — output language", () => {
     expect(ctx).toContain("Never switch to or mirror the input language");
   });
 
+  test("forbids mirroring the VOICE SAMPLE language — emulate style, write in target", () => {
+    // A Spanish brand whose voice sample is Russian must still output Spanish:
+    // the sample teaches style, not language.
+    const ctx = buildBrandContext(
+      { ...fixtureConfig(), voice_samples: [{ text: "Пример русского голоса." }] },
+      "es",
+    );
+    // The instruction names the voice samples as a language source to ignore...
+    expect(ctx).toContain("OR the voice samples below");
+    // ...while still emulating their style in the target language.
+    expect(ctx).toContain("render the style in Spanish");
+    // The voice-sample block itself still renders (style is kept).
+    expect(ctx).toContain("# Voice samples (how this brand actually writes)");
+  });
+
   test("language instruction precedes the output-only instruction", () => {
     const ctx = buildBrandContext(fixtureConfig(), "en");
     const lang = ctx.indexOf("Write the ENTIRE output");
