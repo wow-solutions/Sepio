@@ -5,7 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { brandColor } from "@/lib/brand-color";
+import { DifferentiationSchema } from "@/lib/market-brain/derived-only";
+import { coerceClientBrain } from "@/lib/client-brain/schema";
+import type { BrandRuleRow } from "../rules-panel";
+import { BrandAnalysisSections } from "../brand-analysis-sections";
 import { BasicsForm } from "./basics-form";
 
 type PageProps = {
@@ -43,9 +48,68 @@ export default async function BrandSettingsPage({ params }: PageProps) {
 
   const { data: account } = await supabase
     .from("accounts")
-    .select("display_name, plan_tier, plan_status, trial_ends_at")
+    .select("display_name, plan_tier, plan_status, trial_ends_at, beta_access")
     .eq("id", user.id)
     .maybeSingle();
+
+  // ── Analysis surfaces (moved here from the brand Connections page) ──────────
+  // Client Brain facts (ungated): services/locations/pricing + proof items.
+  const { data: cbConfig } = await supabase
+    .from("brand_configs")
+    .select("services, locations, pricing")
+    .eq("brand_id", brandId)
+    .maybeSingle();
+  const { data: proofRows } = await supabase
+    .from("proof_items")
+    .select("kind, body, source, verifiable")
+    .eq("brand_id", brandId);
+  const clientBrainFacts = coerceClientBrain({
+    services: cbConfig?.services,
+    locations: cbConfig?.locations,
+    pricing: cbConfig?.pricing,
+    proofItems: proofRows ?? [],
+  });
+
+  // website_url for Client Brain "study site" (separate read; not in the typed
+  // brand select above to keep that query stable).
+  const { data: siteRow } = await (supabase as unknown as SupabaseClient)
+    .from("brands")
+    .select("website_url")
+    .eq("id", brandId)
+    .maybeSingle();
+  const website = (siteRow as { website_url?: string | null } | null)?.website_url ?? null;
+
+  // Market Brain + Editorial Memory are beta-gated — only fetch when in beta.
+  const betaAccess = account?.beta_access === true;
+  const competitors = betaAccess
+    ? (
+        await supabase
+          .from("market_competitors")
+          .select("id, url, domain, status")
+          .eq("brand_id", brandId)
+          .order("created_at", { ascending: true })
+      ).data ?? []
+    : [];
+  const brandRules: BrandRuleRow[] = betaAccess
+    ? (
+        await supabase
+          .from("brand_rules")
+          .select("id, rule_type, scope, rule_text, human_label, active, source_post_id")
+          .eq("brand_id", brandId)
+          .order("created_at", { ascending: true })
+      ).data ?? []
+    : [];
+  let differentiationParsed:
+    | ReturnType<typeof DifferentiationSchema.safeParse>
+    | null = null;
+  if (betaAccess) {
+    const { data: diffRow } = await supabase
+      .from("market_differentiation")
+      .select("common_themes, positioning_gaps")
+      .eq("brand_id", brandId)
+      .maybeSingle();
+    if (diffRow) differentiationParsed = DifferentiationSchema.safeParse(diffRow);
+  }
 
   // Fetch brands list для TopBar
   const { data: brandsList } = await supabase
@@ -83,7 +147,7 @@ export default async function BrandSettingsPage({ params }: PageProps) {
       planStatus={account?.plan_status ?? null}
       trialEndsAt={account?.trial_ends_at ?? null}
     >
-      <section style={{ maxWidth: 720, margin: "0 auto", padding: "40px 32px" }}>
+      <section style={{ maxWidth: 880, margin: "0 auto", padding: "40px 32px" }}>
         <div
           style={{
             display: "flex",
@@ -157,6 +221,18 @@ export default async function BrandSettingsPage({ params }: PageProps) {
             initialBrandVoice={brandConfig?.brand_voice ?? ""}
           />
         </div>
+
+        {/* Analysis: Client Brain, Market Brain, Editorial Memory (moved here
+            from the brand Connections page). */}
+        <BrandAnalysisSections
+          brandId={brand.id}
+          website={website}
+          clientBrainFacts={clientBrainFacts}
+          betaAccess={betaAccess}
+          competitors={competitors}
+          differentiationParsed={differentiationParsed}
+          brandRules={brandRules}
+        />
 
         <div style={{ marginTop: 32 }}>
           <Link

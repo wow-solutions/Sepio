@@ -7,14 +7,9 @@ import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
-import { DifferentiationSchema } from "@/lib/market-brain/derived-only";
 import { disconnectLinkedIn, detectPlatformForBrand } from "./actions";
-import { CompetitorsPanel } from "./competitors-panel";
-import { RulesPanel, type BrandRuleRow } from "./rules-panel";
 import { WordPressConnect } from "./wordpress-connect";
 import { BlogDomainConnect } from "./blog-domain-connect";
-import { ClientBrainPanel } from "./client-brain-panel";
-import { coerceClientBrain } from "@/lib/client-brain/schema";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -83,6 +78,13 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
   const effectivePlatform = site.platform_override ?? site.detected_platform ?? null;
   const recommended = recommendedMethod(effectivePlatform);
 
+  // Only offer "Connect WordPress" when it could actually apply: the site is
+  // detected as WordPress, OR detection hasn't run yet (unknown), OR there's
+  // already a WP connection to manage. Hide it when we KNOW the site is a
+  // different platform (e.g. custom) — don't show a dead-end option.
+  const showWordPress =
+    !!wpToken || effectivePlatform === "wordpress" || !effectivePlatform;
+
   // Client blog domain mapping (owner reads via RLS). Not in database.types yet.
   const { data: blogDomainRow } = await (supabase as unknown as SupabaseClient)
     .from("brand_blog_domains")
@@ -95,67 +97,13 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
     cname_target: string | null;
   } | null;
 
-  // Client Brain facts (ungated). Services/locations/pricing live on the config
-  // row; proof_items is its own table. Both RLS-scoped. Coerce the raw jsonb at
-  // the read boundary (drops malformed entries) before display.
-  const { data: cbConfig } = await supabase
-    .from("brand_configs")
-    .select("services, locations, pricing")
-    .eq("brand_id", brandId)
-    .maybeSingle();
-  const { data: proofRows } = await supabase
-    .from("proof_items")
-    .select("kind, body, source, verifiable")
-    .eq("brand_id", brandId);
-  const clientBrainFacts = coerceClientBrain({
-    services: cbConfig?.services,
-    locations: cbConfig?.locations,
-    pricing: cbConfig?.pricing,
-    proofItems: proofRows ?? [],
-  });
-
+  // Client Brain / Market Brain / Editorial Memory data + render moved to brand
+  // Settings (/brands/[id]/settings). This page is Connections only.
   const { data: account } = await supabase
     .from("accounts")
-    .select("display_name, plan_tier, plan_status, trial_ends_at, beta_access")
+    .select("display_name, plan_tier, plan_status, trial_ends_at")
     .eq("id", user.id)
     .maybeSingle();
-
-  // Market Brain surface is gated by beta_access (T8 D6) — only fetch its data
-  // when the account is in the beta, so non-beta brands pay nothing.
-  const betaAccess = account?.beta_access === true;
-  const competitors = betaAccess
-    ? (
-        await supabase
-          .from("market_competitors")
-          .select("id, url, domain, status")
-          .eq("brand_id", brandId)
-          .order("created_at", { ascending: true })
-      ).data ?? []
-    : [];
-
-  const brandRules: BrandRuleRow[] = betaAccess
-    ? (
-        await supabase
-          .from("brand_rules")
-          .select("id, rule_type, scope, rule_text, human_label, active, source_post_id")
-          .eq("brand_id", brandId)
-          .order("created_at", { ascending: true })
-      ).data ?? []
-    : [];
-
-  let differentiation: ReturnType<typeof DifferentiationSchema.safeParse> | null = null;
-  if (betaAccess) {
-    const { data: diffRow } = await supabase
-      .from("market_differentiation")
-      .select("common_themes, positioning_gaps")
-      .eq("brand_id", brandId)
-      .maybeSingle();
-    if (diffRow) {
-      // Re-validate the persisted jsonb at the read boundary (RLS proves
-      // ownership, not shape) — same discipline as the generation seam (PR-A).
-      differentiation = DifferentiationSchema.safeParse(diffRow);
-    }
-  }
 
   const switcherBrands: BrandOption[] = (brandsList ?? []).map((b) => ({
     id: b.id,
@@ -427,14 +375,16 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
           </div>
         </div>
 
-        {/* WordPress */}
-        <div style={{ marginBottom: 16 }}>
-          <WordPressConnect
-            brandId={brand.id}
-            connected={!!wpToken}
-            accountHandle={wpToken?.account_handle ?? null}
-          />
-        </div>
+        {/* WordPress — only when the site is (or might be) WordPress */}
+        {showWordPress && (
+          <div style={{ marginBottom: 16 }}>
+            <WordPressConnect
+              brandId={brand.id}
+              connected={!!wpToken}
+              accountHandle={wpToken?.account_handle ?? null}
+            />
+          </div>
+        )}
 
         {/* Publish on the client's own domain (Sepio-hosted blog via DNS) */}
         <BlogDomainConnect
@@ -472,83 +422,8 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
           </p>
         </div>
 
-        {/* Client Brain — study the client's site → ground generation (ungated) */}
-        <h2
-          style={{
-            fontSize: 18,
-            fontWeight: 600,
-            color: "var(--ink)",
-            margin: "40px 0 4px",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {t("clientBrain.header")}
-        </h2>
-        <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: "0 0 16px" }}>
-          {t("clientBrain.subtitle")}
-        </p>
-        <ClientBrainPanel
-          brandId={brand.id}
-          website={site.website_url ?? null}
-          facts={clientBrainFacts}
-        />
-
-        {/* Market Brain (gated by beta_access) */}
-        {betaAccess && (
-          <>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 600,
-                color: "var(--ink)",
-                margin: "40px 0 4px",
-                letterSpacing: "-0.01em",
-              }}
-            >
-              {t("marketBrain.header")}
-            </h2>
-            <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: "0 0 16px" }}>
-              {t("marketBrain.subtitle")}
-            </p>
-
-            <h3 style={subHeadingStyle()}>{t("marketBrain.competitorsHeader")}</h3>
-            <CompetitorsPanel brandId={brand.id} competitors={competitors} />
-
-            <h3 style={{ ...subHeadingStyle(), marginTop: 28 }}>
-              {t("marketBrain.differentiationHeader")}
-            </h3>
-            <DifferentiationView
-              parsed={differentiation}
-              labels={{
-                empty: t("marketBrain.differentiationEmpty"),
-                themes: t("marketBrain.themesLabel"),
-                gaps: t("marketBrain.gapsLabel"),
-                prevalence: t("marketBrain.prevalenceLabel"),
-              }}
-            />
-          </>
-        )}
-
-        {/* Editorial Memory (gated by beta_access) */}
-        {betaAccess && (
-          <>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 600,
-                color: "var(--ink)",
-                margin: "40px 0 4px",
-                letterSpacing: "-0.01em",
-              }}
-            >
-              {t("editorialMemory.header")}
-            </h2>
-            <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: "0 0 16px" }}>
-              {t("editorialMemory.subtitle")}
-            </p>
-            <RulesPanel brandId={brand.id} rules={brandRules} />
-          </>
-        )}
+        {/* Client Brain, Market Brain, Editorial Memory now live under brand
+            Settings (/brands/[id]/settings) — this page is Connections only. */}
 
         {/* Back link */}
         <div style={{ marginTop: 32 }}>
@@ -566,108 +441,6 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
       </section>
     </AppShell>
   );
-}
-
-function subHeadingStyle(): React.CSSProperties {
-  return {
-    fontSize: 14,
-    fontWeight: 600,
-    color: "var(--ink)",
-    margin: "0 0 12px",
-  };
-}
-
-function DifferentiationView({
-  parsed,
-  labels,
-}: {
-  parsed: ReturnType<typeof DifferentiationSchema.safeParse> | null;
-  labels: { empty: string; themes: string; gaps: string; prevalence: string };
-}) {
-  const data = parsed?.success ? parsed.data : null;
-  const hasContent =
-    data && (data.common_themes.length > 0 || data.positioning_gaps.length > 0);
-
-  if (!hasContent) {
-    return (
-      <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: 0 }}>{labels.empty}</p>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        background: "var(--raised)",
-        border: "1px solid var(--border-subtle)",
-        borderRadius: 14,
-        padding: 22,
-        display: "flex",
-        flexDirection: "column",
-        gap: 20,
-      }}
-    >
-      {data.common_themes.length > 0 && (
-        <div>
-          <p style={cardLabelStyle()}>{labels.themes}</p>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {data.common_themes.map((th, i) => (
-              <li
-                key={i}
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  gap: 10,
-                  fontSize: 13,
-                  color: "var(--ink)",
-                  padding: "4px 0",
-                }}
-              >
-                <span
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                    color: "var(--ink-faint)",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {th.prevalence_count}× {labels.prevalence}
-                </span>
-                <span>{th.theme}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {data.positioning_gaps.length > 0 && (
-        <div>
-          <p style={cardLabelStyle()}>{labels.gaps}</p>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {data.positioning_gaps.map((gap, i) => (
-              <li key={i} style={{ padding: "6px 0" }}>
-                <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", margin: 0 }}>
-                  {gap.angle}
-                </p>
-                <p style={{ fontSize: 13, color: "var(--ink-muted)", margin: "2px 0 0" }}>
-                  {gap.rationale}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function cardLabelStyle(): React.CSSProperties {
-  return {
-    fontFamily: "var(--font-mono)",
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: "0.12em",
-    color: "var(--ink-faint)",
-    margin: "0 0 8px",
-  };
 }
 
 function makeInitials(name: string): string {

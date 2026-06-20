@@ -20,6 +20,13 @@ function resolveError(code: string): string {
   return ERROR_MESSAGES[code] ?? code;
 }
 
+// Subdomain part for a DNS CNAME "Name" field: host minus the registrable apex.
+function dnsRecordName(domain: string): string {
+  const labels = domain.split(".");
+  if (labels.length <= 2) return labels.length === 2 ? "@" : labels[0];
+  return labels.slice(0, -2).join(".");
+}
+
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pending DNS",
   verifying: "Verifying",
@@ -75,7 +82,10 @@ export function BlogDomainConnect({
   }
 
   const cname = cnameTarget ?? "cname.vercel-dns.com";
-  const recordHost = domain ? domain.split(".")[0] : "blog";
+  // DNS "Name" = the host minus the registrable apex (last two labels). Works
+  // for blog.example.com → "blog" and content.blog.example.com → "content.blog";
+  // an apex domain → "@". (.co.uk-style apexes are the note's "full host" case.)
+  const recordHost = domain ? dnsRecordName(domain) : "blog";
 
   return (
     <div style={card}>
@@ -134,12 +144,25 @@ export function BlogDomainConnect({
 
       {domain && (
         <div style={dnsBox}>
-          <p style={{ fontSize: 12, color: "var(--ink-muted)", margin: "0 0 6px" }}>
-            Add this DNS record at your domain provider, then it goes live automatically:
+          <p style={{ fontSize: 12, color: "var(--ink-muted)", margin: "0 0 10px" }}>
+            Add this one DNS record at your domain provider, then it goes live
+            automatically (HTTPS is issued for you):
           </p>
-          <code style={dnsRecord}>
-            CNAME&nbsp;&nbsp;{recordHost}&nbsp;&nbsp;→&nbsp;&nbsp;{cname}
-          </code>
+          <div style={dnsGrid}>
+            <span style={dnsLabel}>Type</span>
+            <code style={dnsValue}>CNAME</code>
+            <span style={dnsLabel}>Name</span>
+            <code style={dnsValue}>{recordHost}</code>
+            <span style={dnsLabel}>Value</span>
+            <code style={dnsValue}>{cname}</code>
+            <span style={dnsLabel}>TTL</span>
+            <code style={dnsValue}>Auto (or 3600)</code>
+          </div>
+          <p style={{ fontSize: 11, color: "var(--ink-faint)", margin: "10px 0 0", lineHeight: 1.5 }}>
+            Some providers want the full host in <b>Name</b> ({domain}) instead of
+            just <b>{recordHost}</b>. Point only this subdomain — your main site is
+            untouched.
+          </p>
         </div>
       )}
 
@@ -178,10 +201,25 @@ const dnsBox: CSSProperties = {
   borderRadius: 8,
 };
 
-const dnsRecord: CSSProperties = {
+const dnsGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+  gap: "6px 14px",
+  alignItems: "center",
+};
+
+const dnsLabel: CSSProperties = {
+  fontSize: 11,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  color: "var(--ink-faint)",
+};
+
+const dnsValue: CSSProperties = {
   fontFamily: "var(--font-mono)",
-  fontSize: 12,
+  fontSize: 12.5,
   color: "var(--ink)",
+  userSelect: "all",
 };
 
 function primaryBtn(busy: boolean): CSSProperties {
