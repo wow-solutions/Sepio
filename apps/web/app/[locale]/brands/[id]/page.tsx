@@ -392,6 +392,9 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
           domain={blogDomain?.domain ?? null}
           status={blogDomain?.status ?? null}
           cnameTarget={blogDomain?.cname_target ?? null}
+          liveUrl={
+            blogDomain?.status === "active" ? `https://${blogDomain.domain}` : null
+          }
         />
 
         {/* Hosted blog — always-available universal fallback */}

@@ -11,6 +11,13 @@ import { detectPlatform } from "@/lib/site-fingerprint";
 import { validateWordPressCredential, type WordPressCredential } from "@/lib/publishers";
 import { assertPublicHttpUrl, SsrfError } from "@/lib/ssrf-guard";
 import { bareHost, isAppHost } from "@/lib/app-host";
+import {
+  addProjectDomain,
+  getProjectDomainStatus,
+  removeProjectDomain,
+  vercelConfigured,
+  VERCEL_CNAME_TARGET,
+} from "@/lib/_private/vercel-domains";
 
 // Error fields are i18n keys (brandDetail.marketBrain.error.*), resolved client-side.
 export type CompetitorActionResult = { ok: true } | { ok: false; error: string };
@@ -321,7 +328,6 @@ export async function setCompetitorStatus(
 // DB; the domain only maps to the brand for rendering.
 const BLOG_HOST_RE =
   /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
-const VERCEL_CNAME_TARGET = "cname.vercel-dns.com";
 
 export async function connectBlogDomain(
   brandId: string,
@@ -339,13 +345,14 @@ export async function connectBlogDomain(
     return { ok: false, error: "invalidDomain" };
   }
 
-  const anyFrom = supabase.from as (n: string) => ReturnType<typeof supabase.from>;
-  const { error } = await anyFrom("brand_blog_domains").upsert(
+  const db = supabase as unknown as SupabaseClient;
+  const { error } = await db.from("brand_blog_domains").upsert(
     {
       brand_id: brandId,
       domain,
       status: "pending",
       cname_target: VERCEL_CNAME_TARGET,
+      vercel_domain_id: null,
       verified_at: null,
       last_error: null,
     },
@@ -358,8 +365,89 @@ export async function connectBlogDomain(
     }
     return { ok: false, error: error.message };
   }
+
+  // Register the domain on OUR Vercel project so the client never touches Vercel
+  // (they only add the DNS record). If Vercel isn't configured, the row stays
+  // 'pending' and an operator adds it manually — graceful degrade.
+  if (vercelConfigured()) {
+    const add = await addProjectDomain(domain);
+    if (!add.ok) {
+      await db.from("brand_blog_domains")
+        .update({ status: "error", last_error: add.error })
+        .eq("brand_id", brandId);
+      return {
+        ok: false,
+        error: add.error.includes("already_in_use") ? "domainTaken" : "vercelAddFailed",
+      };
+    }
+    await db.from("brand_blog_domains")
+      .update({ status: "verifying", vercel_domain_id: add.domainId })
+      .eq("brand_id", brandId);
+  }
+
   revalidatePath(`/brands/${brandId}`);
   return { ok: true };
+}
+
+// Check Vercel: once the domain is added + DNS-verified + cert-ready, flip the
+// row to 'active' (which the public resolver trusts). Activation uses the
+// service role — RLS forbids owners self-activating, so only this server-verified
+// path can set 'active'.
+export async function verifyBlogDomain(brandId: string): Promise<ConnectResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "notSignedIn" };
+  if (!(await ownsBrand(supabase, brandId))) return { ok: false, error: "brandNotFound" };
+  if (!vercelConfigured()) return { ok: false, error: "vercelNotConfigured" };
+
+  const db = supabase as unknown as SupabaseClient;
+  const { data: row } = await db.from("brand_blog_domains")
+    .select("domain")
+    .eq("brand_id", brandId)
+    .maybeSingle();
+  const domain = (row as { domain: string } | null)?.domain;
+  if (!domain) return { ok: false, error: "noDomain" };
+
+  const service = createServiceRoleClient();
+  const svc = service as unknown as SupabaseClient;
+
+  let st = await getProjectDomainStatus(domain);
+  // Self-heal: if the domain isn't on our Vercel project yet (e.g. the row
+  // predates this automation, or the add failed earlier), add it now, then
+  // re-read — so "Check status" is a single idempotent button.
+  if (!st.added) {
+    const add = await addProjectDomain(domain);
+    if (!add.ok) {
+      await svc.from("brand_blog_domains")
+        .update({ status: "error", last_error: add.error })
+        .eq("brand_id", brandId);
+      return {
+        ok: false,
+        error: add.error.includes("already_in_use") ? "domainTaken" : "vercelAddFailed",
+      };
+    }
+    await svc.from("brand_blog_domains")
+      .update({ vercel_domain_id: add.domainId, cname_target: VERCEL_CNAME_TARGET })
+      .eq("brand_id", brandId);
+    st = await getProjectDomainStatus(domain);
+  }
+
+  if (st.added && st.verified && !st.misconfigured) {
+    await svc.from("brand_blog_domains")
+      .update({ status: "active", verified_at: new Date().toISOString(), last_error: null })
+      .eq("brand_id", brandId);
+    revalidatePath(`/brands/${brandId}`);
+    return { ok: true };
+  }
+
+  const reason = !st.added ? "notAdded" : !st.verified ? "dnsNotDetected" : "certPending";
+  await svc.from("brand_blog_domains")
+    .update({ status: "verifying", last_error: reason })
+    .eq("brand_id", brandId);
+  revalidatePath(`/brands/${brandId}`);
+  return { ok: false, error: reason };
 }
 
 export async function disconnectBlogDomain(brandId: string): Promise<void> {
@@ -370,9 +458,18 @@ export async function disconnectBlogDomain(brandId: string): Promise<void> {
   if (!user) throw new Error("Not signed in");
   if (!(await ownsBrand(supabase, brandId))) throw new Error("Brand not found");
 
-  const anyFrom = supabase.from as (n: string) => ReturnType<typeof supabase.from>;
-  const { error } = await anyFrom("brand_blog_domains").delete().eq("brand_id", brandId);
+  const db = supabase as unknown as SupabaseClient;
+  const { data: row } = await db.from("brand_blog_domains")
+    .select("domain")
+    .eq("brand_id", brandId)
+    .maybeSingle();
+  const domain = (row as { domain: string } | null)?.domain;
+
+  const { error } = await db.from("brand_blog_domains").delete().eq("brand_id", brandId);
   if (error) throw new Error("Failed to disconnect domain");
+
+  // Best-effort: release the domain from our Vercel project too.
+  if (domain && vercelConfigured()) await removeProjectDomain(domain);
   revalidatePath(`/brands/${brandId}`);
 }
 

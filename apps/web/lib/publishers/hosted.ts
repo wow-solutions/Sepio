@@ -22,8 +22,8 @@ async function getActiveDomainInfo(
   service: SupabaseClient,
   brandId: string,
 ): Promise<{ domain: string; primaryLocale: string } | null> {
-  const anyFrom = service.from as (name: string) => ReturnType<typeof service.from>;
-  const { data: dom } = await anyFrom("brand_blog_domains")
+  const svc = service as unknown as SupabaseClient;
+  const { data: dom } = await svc.from("brand_blog_domains")
     .select("domain")
     .eq("brand_id", brandId)
     .eq("status", "active")
@@ -31,7 +31,7 @@ async function getActiveDomainInfo(
   const domain = (dom as { domain: string } | null)?.domain;
   if (!domain) return null;
 
-  const { data: brand } = await anyFrom("brands")
+  const { data: brand } = await svc.from("brands")
     .select("primary_language")
     .eq("id", brandId)
     .maybeSingle();

@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { connectBlogDomain, disconnectBlogDomain } from "./actions";
+import { connectBlogDomain, disconnectBlogDomain, verifyBlogDomain } from "./actions";
 
 // "Publish on your own domain" card. Maps a client-owned domain
 // (blog.client.com) to this brand's Sepio-hosted blog via one DNS CNAME — the
@@ -14,6 +14,14 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalidDomain:
     "Enter a valid subdomain you own, e.g. blog.yourdomain.com (not sepio.app).",
   domainTaken: "That domain is already connected to another brand.",
+  vercelAddFailed: "Couldn't register the domain. Try again, or disconnect and reconnect.",
+  vercelNotConfigured: "Domain provisioning isn't set up yet — contact support.",
+  noDomain: "No domain to verify.",
+  // verify() not-ready reasons
+  dnsNotDetected:
+    "DNS record not detected yet. After adding the CNAME it can take a few minutes — then check again.",
+  certPending: "Almost there — issuing the HTTPS certificate. Check again in a minute.",
+  notAdded: "Domain isn't registered yet. Try disconnect and reconnect.",
 };
 
 function resolveError(code: string): string {
@@ -39,16 +47,35 @@ export function BlogDomainConnect({
   domain,
   status,
   cnameTarget,
+  liveUrl,
 }: {
   brandId: string;
   domain: string | null;
   status: string | null;
   cnameTarget: string | null;
+  liveUrl: string | null;
 }): React.JSX.Element {
   const router = useRouter();
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const isActive = status === "active";
+
+  function handleVerify() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const res = await verifyBlogDomain(brandId);
+        if (!res.ok) {
+          setError(resolveError(res.error));
+          return;
+        }
+        router.refresh();
+      } catch {
+        setError("Could not check the domain. Please try again.");
+      }
+    });
+  }
 
   function handleConnect(e: React.FormEvent) {
     e.preventDefault();
@@ -142,11 +169,11 @@ export function BlogDomainConnect({
         </form>
       )}
 
-      {domain && (
+      {domain && !isActive && (
         <div style={dnsBox}>
           <p style={{ fontSize: 12, color: "var(--ink-muted)", margin: "0 0 10px" }}>
-            Add this one DNS record at your domain provider, then it goes live
-            automatically (HTTPS is issued for you):
+            Add this one DNS record at your domain provider, then click Check —
+            HTTPS is issued for you automatically:
           </p>
           <div style={dnsGrid}>
             <span style={dnsLabel}>Type</span>
@@ -163,7 +190,20 @@ export function BlogDomainConnect({
             just <b>{recordHost}</b>. Point only this subdomain — your main site is
             untouched.
           </p>
+          <div style={{ marginTop: 14 }}>
+            <button type="button" disabled={isPending} onClick={handleVerify} style={primaryBtn(isPending)}>
+              {isPending ? "Checking…" : "Check status"}
+            </button>
+          </div>
         </div>
+      )}
+
+      {domain && isActive && liveUrl && (
+        <p style={{ fontSize: 13, margin: "14px 0 0" }}>
+          <a href={liveUrl} target="_blank" rel="noreferrer" style={{ color: "var(--sepio-sepia)", fontWeight: 500 }}>
+            View live blog ↗
+          </a>
+        </p>
       )}
 
       {error && (
