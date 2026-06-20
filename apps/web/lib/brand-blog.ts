@@ -95,6 +95,47 @@ export async function listBrandBlogPosts(
   return data ?? [];
 }
 
+// All published (slug, locale) rows for a brand — used to build the client
+// domain's sitemap.xml. Newest first. [] on error / unknown id.
+export async function listBrandBlogSitemap(
+  brandId: string,
+): Promise<
+  { slug: string; locale: string; published_at: string | null; updated_at: string | null }[]
+> {
+  if (!isUuid(brandId)) return [];
+  const supabase = await brandBlogClient();
+  const { data, error } = await supabase
+    .from("brand_blog_posts")
+    .select("slug, locale, published_at, updated_at")
+    .eq("brand_id", brandId)
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .returns<
+      { slug: string; locale: string; published_at: string | null; updated_at: string | null }[]
+    >();
+  if (error) return [];
+  return data ?? [];
+}
+
+// Published locales for a (brand, slug) — used to build hreflang alternates on
+// the client blog domain. Returns [] on any error / unknown id.
+export async function getBrandBlogPostLocales(
+  brandId: string,
+  slug: string,
+): Promise<string[]> {
+  if (!isUuid(brandId)) return [];
+  const supabase = await brandBlogClient();
+  const { data, error } = await supabase
+    .from("brand_blog_posts")
+    .select("locale")
+    .eq("brand_id", brandId)
+    .eq("slug", slug)
+    .eq("status", "published")
+    .returns<{ locale: string }[]>();
+  if (error) return [];
+  return [...new Set((data ?? []).map((r) => r.locale))];
+}
+
 // Brand display name for an attribution line. brands has NO anon-read RLS
 // (owner-only via account_id), so this returns null when called anonymously —
 // callers must render gracefully without the name. Best-effort: any error /

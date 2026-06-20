@@ -1,7 +1,48 @@
 import type { MetadataRoute } from "next";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { headers } from "next/headers";
 import { localizedUrl, hreflangAlternates } from "@/lib/seo";
 import { createClient } from "@/lib/supabase/server";
+import { bareHost } from "@/lib/app-host";
+import { resolveBlogDomain } from "@/lib/blog-domain";
+import { blogUrl, blogPath } from "@/lib/blog-domain-routing";
+import { listBrandBlogSitemap } from "@/lib/brand-blog";
+
+// Client blog domain sitemap: index (primary + each additional locale) + every
+// published article URL on that host. The proxy excludes /sitemap.xml, so this
+// runs with the client host. hreflang per page comes from the article's <link>
+// alternates; the sitemap just lists discoverable URLs.
+async function clientBlogSitemap(
+  host: string,
+  brandId: string,
+  primaryLocale: string,
+  locales: string[],
+): Promise<MetadataRoute.Sitemap> {
+  const now = new Date();
+  const indexEntries: MetadataRoute.Sitemap = [primaryLocale, ...locales].map(
+    (loc) => ({
+      url: `https://${host}${blogPath(primaryLocale, loc)}`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: loc === primaryLocale ? 0.8 : 0.6,
+    }),
+  );
+
+  // Only list locales this domain actually serves (primary + additional) — a
+  // published row in an out-of-config locale would 404, so keep it out of the map.
+  const routeable = new Set([primaryLocale, ...locales]);
+  const rows = await listBrandBlogSitemap(brandId);
+  const postEntries: MetadataRoute.Sitemap = rows
+    .filter((r) => routeable.has(r.locale))
+    .map((r) => ({
+      url: blogUrl(host, primaryLocale, r.locale, r.slug),
+      lastModified: r.updated_at ?? r.published_at ?? now,
+      changeFrequency: "monthly",
+      priority: 0.7,
+    }));
+
+  return [...indexEntries, ...postEntries];
+}
 
 // Public, index-worthy pages only. Auth/authed/api routes are excluded here and
 // disallowed in robots.ts. URLs follow localePrefix: "as-needed" (en unprefixed).
@@ -13,6 +54,19 @@ const PAGES: { path: string; changeFrequency: MetadataRoute.Sitemap[number]["cha
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Host-aware (reading headers() makes this dynamic). On a client blog domain
+  // emit that brand's sitemap; otherwise the Sepio marketing+blog sitemap.
+  const host = bareHost((await headers()).get("host"));
+  const domain = await resolveBlogDomain(host);
+  if (domain) {
+    return clientBlogSitemap(
+      host,
+      domain.brandId,
+      domain.primaryLocale,
+      domain.locales,
+    );
+  }
+
   const lastModified = new Date();
   const staticEntries: MetadataRoute.Sitemap = PAGES.map(
     ({ path, changeFrequency, priority }) => ({

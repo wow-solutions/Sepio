@@ -9,14 +9,48 @@
 // Idempotent: upserts on the table's unique (brand_id, slug, locale), so a
 // re-publish updates the existing row in place rather than erroring.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { slugify } from "@/lib/slug";
+import { blogPath } from "@/lib/blog-domain-routing";
 import type { PublishAdapter, PublishContext, PublishOutcome } from "./types";
 
-// Public render route is locale-prefixed (app/[locale]/p/[brandId]/[slug]).
-// pt/fr posts have no app route yet (known gap) — render currently covers en/es/ru.
-function url(brandId: string, slug: string, locale: string): string {
-  return `/${locale}/p/${brandId}/${slug}`;
+// The brand's active client blog domain + primary locale, or null if it
+// publishes only to the Sepio-hosted blog. Fetched ONCE per publish (the
+// service client bypasses RLS — can read both tables directly).
+async function getActiveDomainInfo(
+  service: SupabaseClient,
+  brandId: string,
+): Promise<{ domain: string; primaryLocale: string } | null> {
+  const anyFrom = service.from as (name: string) => ReturnType<typeof service.from>;
+  const { data: dom } = await anyFrom("brand_blog_domains")
+    .select("domain")
+    .eq("brand_id", brandId)
+    .eq("status", "active")
+    .maybeSingle();
+  const domain = (dom as { domain: string } | null)?.domain;
+  if (!domain) return null;
+
+  const { data: brand } = await anyFrom("brands")
+    .select("primary_language")
+    .eq("id", brandId)
+    .maybeSingle();
+  const primaryLocale = (brand as { primary_language: string } | null)?.primary_language;
+  return { domain, primaryLocale: primaryLocale ?? "en" };
+}
+
+// Public URL of a published article. If the brand publishes under its own
+// domain, return the absolute client-domain URL (the real, indexable page that
+// cross-links {{PRIMARY_URL}} should point at); else the Sepio-hosted relative
+// path /{locale}/p/{brandId}/{slug}. Pure — domain info is fetched once upfront.
+function buildPublicUrl(
+  domainInfo: { domain: string; primaryLocale: string } | null,
+  brandId: string,
+  slug: string,
+  locale: string,
+): string {
+  if (!domainInfo) return `/${locale}/p/${brandId}/${slug}`;
+  return `https://${domainInfo.domain}${blogPath(domainInfo.primaryLocale, locale, slug)}`;
 }
 
 export const hostedAdapter: PublishAdapter = {
@@ -59,6 +93,9 @@ export const hostedAdapter: PublishAdapter = {
     // user-scoped RLS path. brand_blog_posts is owner-scoped + public-read.
     const service = createServiceRoleClient();
 
+    // Resolve the brand's public URL shape once (client domain vs Sepio-hosted).
+    const domainInfo = await getActiveDomainInfo(service, brandId);
+
     // TODO: regen database.types.ts — brand_blog_posts isn't in the generated
     // Database types yet (migration 20260609120000 lags the types), so the
     // table name and row shape aren't known to the typed query builder. Cast
@@ -96,7 +133,11 @@ export const hostedAdapter: PublishAdapter = {
       const slug = candidates[i];
       const ins = await table().insert(row(slug)).select("id").single();
       if (!ins.error) {
-        return { ok: true, externalId: (ins.data as { id: string }).id, externalUrl: url(brandId, slug, post.language) };
+        return {
+          ok: true,
+          externalId: (ins.data as { id: string }).id,
+          externalUrl: buildPublicUrl(domainInfo, brandId, slug, post.language),
+        };
       }
       if ((ins.error as { code?: string }).code !== "23505") {
         return { ok: false, status: 500, message: ins.error.message };
@@ -119,7 +160,11 @@ export const hostedAdapter: PublishAdapter = {
           .select("id")
           .single();
         if (upd.error) return { ok: false, status: 500, message: upd.error.message };
-        return { ok: true, externalId: (upd.data as { id: string }).id, externalUrl: url(brandId, slug, post.language) };
+        return {
+          ok: true,
+          externalId: (upd.data as { id: string }).id,
+          externalUrl: buildPublicUrl(domainInfo, brandId, slug, post.language),
+        };
       }
       // Owned by a different post → try the suffixed candidate next iteration.
     }

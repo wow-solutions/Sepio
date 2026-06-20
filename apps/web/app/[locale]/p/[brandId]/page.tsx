@@ -3,6 +3,7 @@ import { setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
 import { listBrandBlogPosts, getBrandName } from "@/lib/brand-blog";
+import { activeBlogDomainForBrand } from "@/lib/blog-domain";
 import { BlogShell } from "../../blog/shell";
 import "../../blog/blog.css";
 
@@ -28,7 +29,12 @@ export async function generateMetadata({
   const { brandId } = await params;
   const brandName = await getBrandName(brandId);
   const title = brandName ? `${brandName} — Blog` : "Blog";
-  return { title };
+  // noindex the Sepio-domain copy once the brand has its own blog domain.
+  const blogDomain = await activeBlogDomainForBrand(brandId);
+  return {
+    title,
+    robots: blogDomain ? { index: false, follow: true } : undefined,
+  };
 }
 
 export default async function BrandBlogIndexPage({

@@ -10,6 +10,7 @@ import { parseCompetitorUrl } from "@/lib/market-brain/competitor-input";
 import { detectPlatform } from "@/lib/site-fingerprint";
 import { validateWordPressCredential, type WordPressCredential } from "@/lib/publishers";
 import { assertPublicHttpUrl, SsrfError } from "@/lib/ssrf-guard";
+import { bareHost, isAppHost } from "@/lib/app-host";
 
 // Error fields are i18n keys (brandDetail.marketBrain.error.*), resolved client-side.
 export type CompetitorActionResult = { ok: true } | { ok: false; error: string };
@@ -310,6 +311,69 @@ export async function setCompetitorStatus(
 
   revalidatePath(`/brands/${brandId}`);
   return { ok: true };
+}
+
+// ── Client blog domain (blog.client.com → Sepio-hosted blog) ─────────────────
+// Connect a domain the client owns. We store the mapping (status 'pending') and
+// tell the client the CNAME to add. Activation to 'active' happens once the
+// domain is added to the Vercel project and DNS/TLS are live (operator/Vercel
+// automation — fast-follow). No secret/token: the article already lives in our
+// DB; the domain only maps to the brand for rendering.
+const BLOG_HOST_RE =
+  /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+const VERCEL_CNAME_TARGET = "cname.vercel-dns.com";
+
+export async function connectBlogDomain(
+  brandId: string,
+  rawDomain: string,
+): Promise<ConnectResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "notSignedIn" };
+  if (!(await ownsBrand(supabase, brandId))) return { ok: false, error: "brandNotFound" };
+
+  const domain = bareHost(rawDomain);
+  if (!domain || !BLOG_HOST_RE.test(domain) || isAppHost(domain)) {
+    return { ok: false, error: "invalidDomain" };
+  }
+
+  const anyFrom = supabase.from as (n: string) => ReturnType<typeof supabase.from>;
+  const { error } = await anyFrom("brand_blog_domains").upsert(
+    {
+      brand_id: brandId,
+      domain,
+      status: "pending",
+      cname_target: VERCEL_CNAME_TARGET,
+      verified_at: null,
+      last_error: null,
+    },
+    { onConflict: "brand_id" },
+  );
+  if (error) {
+    // unique(domain) violation → the domain is already claimed by another brand.
+    if ((error as { code?: string }).code === "23505") {
+      return { ok: false, error: "domainTaken" };
+    }
+    return { ok: false, error: error.message };
+  }
+  revalidatePath(`/brands/${brandId}`);
+  return { ok: true };
+}
+
+export async function disconnectBlogDomain(brandId: string): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+  if (!(await ownsBrand(supabase, brandId))) throw new Error("Brand not found");
+
+  const anyFrom = supabase.from as (n: string) => ReturnType<typeof supabase.from>;
+  const { error } = await anyFrom("brand_blog_domains").delete().eq("brand_id", brandId);
+  if (error) throw new Error("Failed to disconnect domain");
+  revalidatePath(`/brands/${brandId}`);
 }
 
 // Manual "recompute now" runs inline in POST /api/brands/[brandId]/recompute-market-brain

@@ -12,6 +12,7 @@ import { disconnectLinkedIn, detectPlatformForBrand } from "./actions";
 import { CompetitorsPanel } from "./competitors-panel";
 import { RulesPanel, type BrandRuleRow } from "./rules-panel";
 import { WordPressConnect } from "./wordpress-connect";
+import { BlogDomainConnect } from "./blog-domain-connect";
 import { ClientBrainPanel } from "./client-brain-panel";
 import { coerceClientBrain } from "@/lib/client-brain/schema";
 
@@ -81,6 +82,18 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
   };
   const effectivePlatform = site.platform_override ?? site.detected_platform ?? null;
   const recommended = recommendedMethod(effectivePlatform);
+
+  // Client blog domain mapping (owner reads via RLS). Not in database.types yet.
+  const { data: blogDomainRow } = await (supabase as unknown as SupabaseClient)
+    .from("brand_blog_domains")
+    .select("domain, status, cname_target")
+    .eq("brand_id", brandId)
+    .maybeSingle();
+  const blogDomain = (blogDomainRow ?? null) as {
+    domain: string;
+    status: string;
+    cname_target: string | null;
+  } | null;
 
   // Client Brain facts (ungated). Services/locations/pricing live on the config
   // row; proof_items is its own table. Both RLS-scoped. Coerce the raw jsonb at
@@ -422,6 +435,14 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
             accountHandle={wpToken?.account_handle ?? null}
           />
         </div>
+
+        {/* Publish on the client's own domain (Sepio-hosted blog via DNS) */}
+        <BlogDomainConnect
+          brandId={brand.id}
+          domain={blogDomain?.domain ?? null}
+          status={blogDomain?.status ?? null}
+          cnameTarget={blogDomain?.cname_target ?? null}
+        />
 
         {/* Hosted blog — always-available universal fallback */}
         <div

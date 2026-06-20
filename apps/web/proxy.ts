@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import createIntlMiddleware from "next-intl/middleware";
 import { routing } from "@/i18n/routing";
 import { updateSession } from "@/lib/supabase/middleware";
+import { isAppHost } from "@/lib/app-host";
 import type { Database } from "@/lib/supabase/database.types";
 
 const intlMiddleware = createIntlMiddleware(routing);
@@ -27,6 +28,22 @@ export async function proxy(request: NextRequest) {
   }
   if (pathname.startsWith("/api")) {
     return updateSession(request);
+  }
+
+  // Client blog domains (blog.client.com) are served by the multi-tenant
+  // /sites renderer, not the localized app. Decide by host alone here (the
+  // proxy must not do data fetching — Next 16 proxy guidance); the actual
+  // host→brand resolution happens in the /sites server component (cached).
+  // NOTE: the folder is app/sites (NOT app/_sites — a leading underscore is a
+  // Next private folder, excluded from routing). robots.txt / sitemap.xml /
+  // feed.xml are excluded by `matcher` below, so they reach their host-aware
+  // route handlers directly on the client domain.
+  if (!isAppHost(request.headers.get("host"))) {
+    const url = request.nextUrl.clone();
+    // Root "/" → "/sites" (NOT "/sites/": a trailing slash would 308-redirect
+    // and miss the optional catch-all). "/slug" → "/sites/slug".
+    url.pathname = pathname === "/" ? "/sites" : `/sites${pathname}`;
+    return NextResponse.rewrite(url);
   }
 
   const intlResponse = intlMiddleware(request);
