@@ -289,9 +289,18 @@ export async function POST(
       { extraContext },
     );
   } catch (err) {
-    const msg = err instanceof ClaudeError ? err.message : "Generate failed";
+    // Provider (Anthropic) errors can carry billing/quota internals that must
+    // not reach an end user — log the real error, return a generic message.
+    if (err instanceof ClaudeError) {
+      console.error("[variants] Claude generation failed:", err.status, err.message);
+    } else {
+      console.error("[variants] variant generation failed:", err);
+    }
     const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
-    return jsonError(msg, status);
+    return jsonError(
+      "AI generation is temporarily unavailable. Please try again in a moment.",
+      status,
+    );
   }
 
   // Upsert the child. 'hosted' is excluded above, so bodyUpdateForPlatform always

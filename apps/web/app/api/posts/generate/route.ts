@@ -82,6 +82,22 @@ function jsonError(body: ErrorBody, status: number): Response {
   return Response.json(body, { status });
 }
 
+// Provider (Anthropic) errors can carry billing/quota internals — e.g. "Your
+// credit balance is too low... Plans & Billing" — that must never reach an end
+// user. Log the real error for debugging; return a generic, safe message.
+const SAFE_GENERATION_ERROR =
+  "AI generation is temporarily unavailable. Please try again in a moment.";
+
+function generationErrorResponse(err: unknown): Response {
+  if (err instanceof ClaudeError) {
+    console.error("[generate] Claude generation failed:", err.status, err.message);
+  } else {
+    console.error("[generate] generation failed:", err);
+  }
+  const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
+  return jsonError({ error: SAFE_GENERATION_ERROR, stage: "generate" }, status);
+}
+
 // Cached extract shape stored in topic_candidates.article_extract (= ArticleExtract
 // plus an ISO fetchedAt). Reading back: cast to this, pass the ArticleExtract
 // subset (drop fetchedAt) into the angle builder.
@@ -349,10 +365,7 @@ export async function POST(request: Request): Promise<Response> {
     try {
       primaryVariant = await generateOne(languages[0]);
     } catch (err) {
-      const msg = err instanceof ClaudeError ? err.message : "Generate failed";
-      const status =
-        err instanceof ClaudeError && err.status === 401 ? 500 : 502;
-      return jsonError({ error: msg, stage: "generate" }, status);
+      return generationErrorResponse(err);
     }
 
     // Shared slug for all language siblings. Empty (e.g. a non-latin primary
@@ -564,9 +577,7 @@ export async function POST(request: Request): Promise<Response> {
           );
     }
   } catch (err) {
-    const msg = err instanceof ClaudeError ? err.message : "Generate failed";
-    const status = err instanceof ClaudeError && err.status === 401 ? 500 : 502;
-    return jsonError({ error: msg, stage: "generate" }, status);
+    return generationErrorResponse(err);
   }
 
   let pangram: PangramResponse;
