@@ -24,6 +24,9 @@ type Props = {
   // State-aware billing CTA label ("Upgrade now" / "Manage plan" / "Update
   // billing"), resolved in AppShell. The action behind it is the same for all.
   billingLabel?: string;
+  // Beta flag — gates the social fan-out rows (channels beyond the blog) to match
+  // the variants route's server gate. Resolved in AppShell.
+  betaAccess?: boolean;
   labels: {
     workspace: string;
     home: string;
@@ -50,6 +53,7 @@ export function Rail({
   planTier,
   trialLabel,
   billingLabel,
+  betaAccess,
   labels,
 }: Props) {
   // Brand-scoped routes need a brand. When none is selected, Writer/Posts point
@@ -112,7 +116,7 @@ export function Rail({
           every other page they fall back to connection indicators. */}
       <div>
         <RailGroupLabel>{labels.channels}</RailGroupLabel>
-        <KitchenChannels />
+        <KitchenChannels betaAccess={betaAccess} />
       </div>
 
       {/* Plan / billing card — countdown only on trial, CTA in every state */}

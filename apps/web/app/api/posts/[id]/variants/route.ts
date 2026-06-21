@@ -148,6 +148,21 @@ export async function POST(
     source = src;
   }
 
+  // Beta gate — the social fan-out is dogfood-locked like Editorial Memory /
+  // Market Brain (refine/route.ts:80). The blog itself (Track B) stays ungated;
+  // only adapting it into channel variants is beta. A brand whose account lacks
+  // beta_access can't reach here. The UI hides the social rows for the same set,
+  // so this is the server half of a defence-in-depth pair.
+  const { data: gate, error: gateErr } = await supabase
+    .from("brands")
+    .select("id, accounts!inner(beta_access)")
+    .eq("id", source.brand_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (gateErr) return jsonError(gateErr.message, 500);
+  if (!gate) return jsonError("Brand not found", 404);
+  if (!gate.accounts.beta_access) return jsonError("noBetaAccess", 403);
+
   const sourceBody = getPostBody(source);
   if (!sourceBody.trim()) {
     return jsonError("Source post has no content to adapt", 400);

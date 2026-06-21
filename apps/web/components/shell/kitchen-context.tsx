@@ -78,6 +78,12 @@ type KitchenValue = {
   // Mark a variant published (locks it read-only + carries the live URL). Body
   // and lifecycle are separate contracts — kept distinct from updateVariantBody.
   markVariantPublished: (c: ChannelId, externalUrl: string | null) => void;
+  // Flag every channel variant 'stale' after the SOURCE article is edited — the
+  // server bumps source_version on a source save, so the cached variant bodies no
+  // longer reflect the article. The rail/center surface this + prompt a regenerate
+  // (instead of silently showing copy adapted from the pre-edit text). Published
+  // variants are left alone (already live; can't be un-published).
+  markVariantsStale: () => void;
 };
 
 const KitchenCtx = createContext<KitchenValue | null>(null);
@@ -354,6 +360,25 @@ export function KitchenProvider({
     [],
   );
 
+  const markVariantsStale = useCallback(() => {
+    setVariants((v) => {
+      let changed = false;
+      const next: Partial<Record<ChannelId, VariantData>> = {};
+      for (const key of Object.keys(v) as ChannelId[]) {
+        const data = v[key]!;
+        // The blog itself is the source (not a variant); a published variant is
+        // already live. Everything else generated from the old source is stale.
+        if (key !== "hosted" && data.state !== "published" && data.state !== "stale") {
+          next[key] = { ...data, state: "stale" };
+          changed = true;
+        } else {
+          next[key] = data;
+        }
+      }
+      return changed ? next : v;
+    });
+  }, []);
+
   const value = useMemo<KitchenValue>(
     () => ({
       present,
@@ -369,6 +394,7 @@ export function KitchenProvider({
       regenerate,
       updateVariantBody,
       markVariantPublished,
+      markVariantsStale,
     }),
     [
       present,
@@ -383,6 +409,7 @@ export function KitchenProvider({
       regenerate,
       updateVariantBody,
       markVariantPublished,
+      markVariantsStale,
     ],
   );
 
@@ -404,4 +431,5 @@ const INERT: KitchenValue = {
   regenerate: () => {},
   updateVariantBody: () => {},
   markVariantPublished: () => {},
+  markVariantsStale: () => {},
 };

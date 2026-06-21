@@ -1,4 +1,5 @@
 import { getTranslations } from "next-intl/server";
+import { createClient } from "@/lib/supabase/server";
 import { AppTopBar } from "./app-topbar";
 import { Rail, type RailActive } from "./rail";
 import { CollapsibleRail } from "./collapsible-rail";
@@ -39,6 +40,24 @@ export async function AppShell({
   children,
 }: Props) {
   const t = await getTranslations("shell");
+
+  // Resolve beta_access once here (server) so the rail can gate the social
+  // fan-out rows without every page threading the flag through. accounts.id is
+  // the auth user id; default closed if signed out / no row.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  let betaAccess = false;
+  if (user) {
+    const { data: account } = await supabase
+      .from("accounts")
+      .select("beta_access")
+      .eq("id", user.id)
+      .maybeSingle();
+    betaAccess = account?.beta_access ?? false;
+  }
+
   // Remount the provider (re-run its state initializers) when the opened group/
   // channel changes; stay stable per-brand otherwise so normal navigation keeps
   // the rail's persisted selection.
@@ -107,6 +126,7 @@ export async function AppShell({
               planTier={planTier}
               trialLabel={trialLabel}
               billingLabel={billingLabel}
+              betaAccess={betaAccess}
               labels={{
                 workspace: t("workspace"),
                 home: t("home"),

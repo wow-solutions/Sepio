@@ -323,7 +323,9 @@
       "publishing": "Публикуем…",
       "viewPublished": "Открыть пост ↗",
       "notConnected": "LinkedIn не подключён для этого бренда.",
-      "connectLinkedin": "Подключить LinkedIn"
+      "connectLinkedin": "Подключить LinkedIn",
+      "stale": "Устарело",
+      "staleNotice": "Исходная статья изменилась после генерации. Перегенерируй, чтобы обновить."
     },
     "length": "Длина",
     "lengthApprox": "~ 1 200 знаков",

@@ -323,7 +323,9 @@
       "publishing": "Publishing…",
       "viewPublished": "View published ↗",
       "notConnected": "LinkedIn isn't connected for this brand.",
-      "connectLinkedin": "Connect LinkedIn"
+      "connectLinkedin": "Connect LinkedIn",
+      "stale": "Out of date",
+      "staleNotice": "The source article changed since this was generated. Regenerate to refresh it."
     },
     "length": "Length",
     "lengthApprox": "~ 1,200 chars",

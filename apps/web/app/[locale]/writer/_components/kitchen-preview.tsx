@@ -202,6 +202,28 @@ export function KitchenCenter({
       {/* Content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "32px 32px 24px", minHeight: 0 }}>
         <div style={{ maxWidth: "var(--editor-max-w)", margin: "0 auto" }}>
+          {variant?.state === "stale" && !variant.loading && !variant.error && body && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                marginBottom: 16,
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "rgba(176,123,80,0.10)",
+                border: "1px solid rgba(176,123,80,0.28)",
+                fontSize: 13,
+                color: "var(--ink-muted)",
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 200 }}>{t("kitchen.staleNotice")}</span>
+              <button type="button" onClick={() => regenerate(active)} disabled={!!variant?.loading} style={btn(false, true)}>
+                {t("kitchen.regenerate")}
+              </button>
+            </div>
+          )}
           {variant?.loading ? (
             <Center text={t("kitchen.generating")} />
           ) : variant?.error ? (

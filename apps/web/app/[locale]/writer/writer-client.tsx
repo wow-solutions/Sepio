@@ -231,6 +231,7 @@ export function WriterClient({
     syncBase: kitchenSyncBase,
     source: kitchenSource,
     active: kitchenActive,
+    markVariantsStale: kitchenMarkVariantsStale,
   } = useKitchen();
   // Kitchen/blog mode = the writer will produce a blog (the foundation) or is
   // editing one. The rail channel selector is interactive only then — not while
@@ -497,6 +498,11 @@ export function WriterClient({
         setStage("error");
         return;
       }
+      // Saving the SOURCE invalidates every channel variant (the server bumps
+      // source_version on ANY source save — body OR title — so match it here, or
+      // the in-session rail would stay 'fresh' while a reopen shows them 'stale').
+      // Flag them so the rail/center prompt a regenerate.
+      if (isBlogSource) kitchenMarkVariantsStale();
       setOriginalContent(content);
       if (editorIsBlog) setOriginalTitle(title);
       setStage("saved");
@@ -580,6 +586,8 @@ export function WriterClient({
         setStage("error");
         return;
       }
+      // Same source-save invalidation as onSave (the dirty save bumped source_version).
+      if (isBlogSource) kitchenMarkVariantsStale();
       setOriginalContent(content);
       if (editorIsBlog) setOriginalTitle(title);
     }

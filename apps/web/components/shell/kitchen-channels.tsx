@@ -12,6 +12,7 @@
 // (Blog + LinkedIn). Generation works for ALL channels regardless (slice 1 =
 // ready-to-use text; auto-publish only to the blog).
 
+import { useTranslations } from "next-intl";
 import { useKitchen } from "./kitchen-context";
 import {
   CHANNEL_ORDER,
@@ -37,13 +38,21 @@ const PUBLISH_LIVE: Record<ChannelId, boolean> = {
 // dot · name · iOS publish-toggle]. Clicking the row PREVIEWS the channel in the
 // writer (sets active); the toggle selects it as a publish destination. The
 // destination selection persists per brand (kitchen-context localStorage).
-export function KitchenChannels() {
+export function KitchenChannels({ betaAccess = false }: { betaAccess?: boolean }) {
   const k = useKitchen();
+  const t = useTranslations("writer");
+
+  // The social fan-out is beta-locked (matches the variants route's server gate).
+  // The blog ('hosted') is Track B — shipped, ungated — so it stays visible for
+  // everyone; only the channel variants are hidden until beta_access is granted.
+  const channels = betaAccess
+    ? CHANNEL_ORDER
+    : CHANNEL_ORDER.filter((c) => c === "hosted");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
       <style>{"@keyframes kc-spin{to{transform:rotate(360deg)}}"}</style>
-      {CHANNEL_ORDER.map((c) => {
+      {channels.map((c) => {
         const live = PUBLISH_LIVE[c];
         const icon = CHANNEL_ICON[c];
         const name = CHANNEL_LABEL[c];
@@ -51,6 +60,7 @@ export function KitchenChannels() {
         const selected = k.selected.has(c);
         const variant = k.variants[c];
         const loading = !!variant?.loading;
+        const stale = variant?.state === "stale";
         return (
           <div
             key={c}
@@ -80,6 +90,7 @@ export function KitchenChannels() {
             >
               {name}
             </span>
+            {stale && !loading && <StaleDot title={t("kitchen.stale")} />}
             {loading ? (
               <Spinner />
             ) : (
@@ -206,6 +217,25 @@ function KitchenToggle({
         }}
       />
     </button>
+  );
+}
+
+// Amber dot — the channel's variant was generated from an older source version
+// (the article changed since). Click the row to preview + regenerate.
+function StaleDot({ title }: { title: string }) {
+  return (
+    <span
+      title={title}
+      aria-label={title}
+      style={{
+        width: 7,
+        height: 7,
+        borderRadius: "50%",
+        flexShrink: 0,
+        background: "var(--brand)",
+        boxShadow: "0 0 0 3px rgba(176,123,80,0.18)",
+      }}
+    />
   );
 }
 

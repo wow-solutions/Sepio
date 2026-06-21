@@ -28,10 +28,11 @@ type EditPostRow = {
   content_group_id: string | null;
   source_post_id: string | null;
   variant_state: string | null;
+  generated_from_source_version: number | null;
 };
 
 const POST_COLS =
-  "id, brand_id, platform, language, status, content_text, content_markdown, title, excerpt, external_post_url, content_group_id, source_post_id, variant_state";
+  "id, brand_id, platform, language, status, content_text, content_markdown, title, excerpt, external_post_url, content_group_id, source_post_id, variant_state, generated_from_source_version";
 
 function postToInitial(p: EditPostRow): InitialPost {
   return {
@@ -106,6 +107,10 @@ export default async function WriterPage({ searchParams }: PageProps) {
   const brandsList = allBrands ?? [];
   const configsList = allConfigs ?? [];
   const postsList = allPosts ?? [];
+  // The social fan-out is beta-locked (server 403 + rail hides the rows). Resolve
+  // it once so the kitchen seed below never lands a non-beta user on a social
+  // variant's editor (opening a variant URL would otherwise render its center).
+  const betaAccess = account?.beta_access ?? false;
 
   // Build the edit-mode view model. The active brand is the post's brand.
   // When the opened post belongs to a content group (the kitchen), reconstruct
@@ -120,11 +125,21 @@ export default async function WriterPage({ searchParams }: PageProps) {
   if (rawPost) {
     editBrandId = rawPost.brand_id;
     if (rawPost.content_group_id) {
-      const { data: groupRows } = await db
-        .from("posts")
-        .select(POST_COLS)
-        .eq("content_group_id", rawPost.content_group_id);
+      const [{ data: groupRows }, { data: groupRow }] = await Promise.all([
+        db.from("posts").select(POST_COLS).eq("content_group_id", rawPost.content_group_id),
+        db
+          .from("content_groups")
+          .select("source_version")
+          .eq("id", rawPost.content_group_id)
+          .maybeSingle(),
+      ]);
       const rows = (groupRows as unknown as EditPostRow[] | null) ?? [];
+      // Current source version — a variant generated from an older version is
+      // stale (the source article changed since). Persisted variant_state never
+      // stores 'stale' (the API computes freshness on the fly), so derive it here
+      // so a reopened group shows the badge without a regenerate round-trip.
+      const groupSourceVersion =
+        (groupRow as { source_version: number } | null)?.source_version ?? null;
       // The source is the post with no source_post_id (the blog). Fallback to the
       // opened post if the source row isn't visible (shouldn't happen under RLS).
       const sourceRow = rows.find((r) => r.source_post_id === null) ?? rawPost;
@@ -135,10 +150,17 @@ export default async function WriterPage({ searchParams }: PageProps) {
       for (const r of rows) {
         if (r.id === sourceRow.id) continue;
         if (r.platform === "hosted" || !isChannelId(r.platform)) continue;
+        const baseState = r.variant_state ?? "synced";
+        // A published variant is already live (can't be un-published); everything
+        // else generated from a superseded source version is stale.
+        const isStale =
+          baseState !== "published" &&
+          groupSourceVersion !== null &&
+          r.generated_from_source_version !== groupSourceVersion;
         variants[r.platform] = {
           postId: r.id,
           body: getPostBody(r),
-          state: r.variant_state ?? "synced",
+          state: isStale ? "stale" : baseState,
           loading: false,
           error: null,
           externalUrl: r.external_post_url ?? null,
@@ -155,8 +177,11 @@ export default async function WriterPage({ searchParams }: PageProps) {
           language: sourceRow.language,
         },
         baseBody: getPostBody(sourceRow),
-        variants,
-        active: openedPlatform,
+        // Non-beta can't fan out — drop the seeded variants and pin the active
+        // channel to the blog source so the center never renders a social
+        // variant's edit/publish controls (which would 403 anyway).
+        variants: betaAccess ? variants : {},
+        active: betaAccess ? openedPlatform : "hosted",
       };
     } else {
       initialPost = postToInitial(rawPost);
@@ -222,7 +247,7 @@ export default async function WriterPage({ searchParams }: PageProps) {
         }}
         initialPost={initialPost}
         hasGroup={kitchenInitialGroup !== null}
-        betaAccess={account?.beta_access ?? false}
+        betaAccess={betaAccess}
       />
     </AppShell>
   );
