@@ -87,6 +87,13 @@ function jsonError(body: ErrorBody, status: number): Response {
 // subset (drop fetchedAt) into the angle builder.
 type CachedArticleExtract = ArticleExtract & { fetchedAt: string };
 
+// Blog generation fans out across every brand language (one long-form Sonnet
+// call per language). Multi-language brands can run ~3x a single generation, so
+// give the route an explicit, deterministic budget instead of the platform
+// default. Languages are generated concurrently (see the blog branch), keeping
+// real latency near a single generation.
+export const maxDuration = 300;
+
 export async function POST(request: Request): Promise<Response> {
   const supabase = await createClient();
   const {
@@ -353,17 +360,27 @@ export async function POST(request: Request): Promise<Response> {
     // link, acceptable fallback for a brand whose primary script has no slug).
     const sharedSlug = slugify(primaryVariant.title) || null;
 
-    // Additional languages are best-effort — one bad language must not sink the
-    // whole article (the primary is already in hand).
+    // Additional languages are best-effort and independent, so generate them
+    // concurrently: total latency is ~max(language), not the sum (a 3-language
+    // brand was ~3x a single generation, pushing the Vercel function limit).
+    // One bad language must not sink the article — the primary is already in
+    // hand, and allSettled keeps each failure isolated.
     const additionalVariants: BlogVariant[] = [];
-    for (const language of languages.slice(1)) {
-      try {
-        additionalVariants.push(await generateOne(language));
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[generate] blog language '${language}' failed:`, msg);
+    const additionalResults = await Promise.allSettled(
+      languages.slice(1).map((language) => generateOne(language)),
+    );
+    additionalResults.forEach((result, i) => {
+      if (result.status === "fulfilled") {
+        additionalVariants.push(result.value);
+        return;
       }
-    }
+      const language = languages[i + 1];
+      const msg =
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+      console.error(`[generate] blog language '${language}' failed:`, msg);
+    });
 
     // Insert one hosted post per generated language. Markdown is canonical for a
     // blog; content_text stays null (it's the LinkedIn short-text column). The
