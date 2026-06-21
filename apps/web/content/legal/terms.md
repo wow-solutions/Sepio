@@ -4,11 +4,13 @@
 **Status:** Pre-alpha. These terms will be updated before public beta launch.
 
 These Terms of Service ("Terms") govern your use of the Sepio
-platform ("Service") operated by WoW Solutions / Grigoriy Baranchuk
+platform ("Service") operated by **WOW SOLUCIONES**, a business
+registered in the Republic of Panama (Aviso de Operación
+N° E-8-234290-2025-292016), owned by Ryhor (Grigoriy) Baranchuk
 ("we", "us"). By creating an account or using the Service, you agree to
 these Terms.
 
-Contact: **grigoriy.baranchuk@gmail.com**.
+Contact: **greg@sepio.app**.
 
 ---
 
@@ -164,5 +166,6 @@ consumer protection law.
 
 ## 16. Contact
 
-**Email:** grigoriy.baranchuk@gmail.com
+**Operator:** WOW SOLUCIONES (Panamá) · Aviso de Operación N° E-8-234290-2025-292016
+**Email:** greg@sepio.app
 **GitHub:** [github.com/wow-solutions/Sepio](https://github.com/wow-solutions/Sepio)

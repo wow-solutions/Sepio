@@ -8,14 +8,19 @@ open-source content automation service for marketing consultants. This
 Privacy Policy explains what data we collect, how we use it, and the
 choices you have.
 
-If you have any questions, contact us at **grigoriy.baranchuk@gmail.com**.
+If you have any questions, contact us at **greg@sepio.app**.
 
 ---
 
 ## 1. Who we are
 
-Sepio is operated by WoW Solutions / Grigoriy Baranchuk
-(Panama). The hosted product runs on managed cloud infrastructure
+Sepio is operated by **WOW SOLUCIONES**, a business registered in the
+Republic of Panama (Aviso de Operación N° E-8-234290-2025-292016), owned
+by Ryhor (Grigoriy) Baranchuk. Registered address: edificio PH Pijao,
+oficina 401, Calle Green Bay, Urbanización Costa del Este, Corregimiento
+Juan Díaz, Distrito y Provincia de Panamá, República de Panamá.
+
+The hosted product runs on managed cloud infrastructure
 (Vercel, Supabase, Railway, AWS). The same source code is also
 available as open-source at
 [github.com/wow-solutions/Sepio](https://github.com/wow-solutions/Sepio)
@@ -108,7 +113,7 @@ You can at any time:
 
 If you are an EU/UK resident, you have rights under GDPR. If you are a
 California resident, you have rights under CCPA. To exercise these
-rights, email **grigoriy.baranchuk@gmail.com**.
+rights, email **greg@sepio.app**.
 
 ## 6. Data retention
 
@@ -151,5 +156,6 @@ We will post any changes to this policy on this page and update the
 
 ## 11. Contact
 
-**Email:** grigoriy.baranchuk@gmail.com
+**Operator:** WOW SOLUCIONES (Panamá) · Aviso de Operación N° E-8-234290-2025-292016
+**Email:** greg@sepio.app
 **GitHub:** [github.com/wow-solutions/Sepio](https://github.com/wow-solutions/Sepio)

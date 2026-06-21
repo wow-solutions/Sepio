@@ -516,7 +516,7 @@ export default async function HomePage({
             ))}
           </div>
           <div className="footer-legal">
-            <span>© 2026 Sepio · <a href="https://sepio.app">sepio.app</a></span>
+            <span>© 2026 Sepio · <a href="https://sepio.app">sepio.app</a> · operated by WOW SOLUCIONES (Panamá)</span>
             <span>{C.footer.legalRight}</span>
           </div>
         </div>
