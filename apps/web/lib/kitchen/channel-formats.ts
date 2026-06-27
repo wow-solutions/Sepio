@@ -101,3 +101,18 @@ export const FULLNESS_RANK: Record<ChannelId, number> = {
 // a real URL; the resolver substitutes the primary destination URL at
 // publish/export time. Keep this exact string stable across the codebase.
 export const PRIMARY_URL_TOKEN = "{{PRIMARY_URL}}";
+
+// Auto-publish CAPABILITY per channel — whether the publish dispatcher has a
+// working adapter today. Generation works for every channel; this gates only
+// the connection dot + the destination picker (non-live channels show "soon").
+// Per-brand CONNECTION state (domain / OAuth) is layered on top at the call site.
+export const PUBLISH_LIVE: Record<ChannelId, boolean> = {
+  hosted: true,
+  linkedin: true,
+  x: false,
+  facebook: false,
+  instagram: false,
+  threads: false,
+  telegram: false,
+  tiktok: false,
+};

@@ -18,21 +18,9 @@ import {
   CHANNEL_ORDER,
   CHANNEL_LABEL,
   CHANNEL_ICON,
+  PUBLISH_LIVE,
   type ChannelId,
 } from "@/lib/kitchen/channel-formats";
-
-// Auto-publish availability today (the connection indicator). Generation is
-// available for every channel; this only drives the dot vs "soon" label.
-const PUBLISH_LIVE: Record<ChannelId, boolean> = {
-  hosted: true,
-  linkedin: true,
-  x: false,
-  facebook: false,
-  instagram: false,
-  threads: false,
-  telegram: false,
-  tiktok: false,
-};
 
 // The channel rail is the same on every page: each row is [icon · connection
 // dot · name · iOS publish-toggle]. Clicking the row PREVIEWS the channel in the

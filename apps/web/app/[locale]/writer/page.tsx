@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getBrandFromRequest } from "@/lib/get-brand";
 import { createClient } from "@/lib/supabase/server";
+import { activeBlogDomainForBrand } from "@/lib/blog-domain";
 import { AppShell } from "@/components/shell/app-shell";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { getPostBody } from "@/lib/post-body";
@@ -213,6 +214,21 @@ export default async function WriterPage({ searchParams }: PageProps) {
       : brand;
   const currentConfig = configsList.find((c) => c.brand_id === activeBrand.id);
 
+  // Per-brand connection state for the publish destination picker: blog is
+  // publishable only with an active own-domain; LinkedIn only with an active
+  // OAuth token. Resolved for the active brand (RLS-scoped / SECURITY DEFINER).
+  const [activeDomain, { data: liToken }] = await Promise.all([
+    activeBlogDomainForBrand(activeBrand.id),
+    supabase
+      .from("brand_oauth_tokens")
+      .select("status")
+      .eq("brand_id", activeBrand.id)
+      .eq("platform", "linkedin")
+      .maybeSingle(),
+  ]);
+  const hasBlogDomain = !!activeDomain;
+  const hasLinkedIn = liToken?.status === "active";
+
   const accountDisplayName = account?.display_name ?? "";
   const userInitials = makeInitials(accountDisplayName);
 
@@ -248,6 +264,8 @@ export default async function WriterPage({ searchParams }: PageProps) {
         initialPost={initialPost}
         hasGroup={kitchenInitialGroup !== null}
         betaAccess={betaAccess}
+        hasBlogDomain={hasBlogDomain}
+        hasLinkedIn={hasLinkedIn}
       />
     </AppShell>
   );

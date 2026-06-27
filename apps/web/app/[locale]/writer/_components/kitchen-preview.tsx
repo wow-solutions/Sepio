@@ -17,18 +17,16 @@ import {
   useTransition,
 } from "react";
 import { useTranslations } from "next-intl";
-import { Link } from "@/i18n/navigation";
 import { useKitchen } from "@/components/shell/kitchen-context";
-import { CHANNEL_LABEL, type ChannelId } from "@/lib/kitchen/channel-formats";
+import { CHANNEL_LABEL } from "@/lib/kitchen/channel-formats";
 import { EditorialPanel } from "@/app/[locale]/posts/[id]/editorial-panel";
 import { saveDraft } from "../actions";
 
 export type ViewMode = "preview" | "edit";
 
-// Channels the publish dispatcher can actually post to today. Other kitchen
-// channels would 400 ("not yet supported"), so we don't show Publish for them.
-const PUBLISHABLE = new Set<ChannelId>(["linkedin"]);
-
+// Publishing moved to the writer-footer "Publish ▾" destination picker, which
+// fans out over the selected channels. This center is editor-only now: Preview/
+// Edit, Save, Regenerate, Copy, Editorial Memory.
 export function KitchenCenter({
   mode,
   onModeChange,
@@ -47,39 +45,38 @@ export function KitchenCenter({
     source,
     regenerate,
     updateVariantBody,
-    markVariantPublished,
+    registerFlush,
   } = useKitchen();
   const variant = active === "hosted" ? undefined : variants[active];
 
   const [draft, setDraft] = useState("");
   const [pending, startSave] = useTransition();
   const [saveErr, setSaveErr] = useState<string | null>(null);
-  const [publishing, setPublishing] = useState(false);
-  const [publishErr, setPublishErr] = useState<string | null>(null);
-  const [needsReconnect, setNeedsReconnect] = useState(false);
-  // Synchronous in-flight guard (state lags a render → two fast clicks could both
-  // enter onPublish; the loser's 409 would stomp the winner's success).
-  const publishingRef = useRef(false);
-  // Live mirror of `active` so a publish resolving after a channel switch only
-  // writes component-global error/reconnect state when we're still on its channel.
-  const activeRef = useRef(active);
-  useEffect(() => {
-    activeRef.current = active;
-  }, [active]);
 
   const body = variant?.body ?? "";
   useEffect(() => {
     setDraft(body);
     setSaveErr(null);
-    setPublishErr(null);
-    setNeedsReconnect(false);
   }, [body, active]);
 
   const dirty = draft !== body;
   // A published variant is read-only (the backend saveDraft also rejects it).
   // Reachable now that opening a group can land directly on a published channel.
   const isPublished = variant?.state === "published";
-  const canPublish = PUBLISHABLE.has(active);
+
+  // Expose this channel's unsaved draft to the publish fan-out: when the picker
+  // publishes, it flushes the active editor first so the live edit is persisted
+  // (replaces the save-then-publish the removed per-channel button used to do).
+  useEffect(() => {
+    registerFlush(async () => {
+      const pid = variant?.postId;
+      if (!pid || isPublished || draft === body) return true;
+      const r = await saveDraft(pid, draft);
+      if (r.ok) updateVariantBody(active, draft);
+      return r.ok;
+    });
+    return () => registerFlush(null);
+  }, [registerFlush, variant?.postId, isPublished, draft, body, active, updateVariantBody]);
 
   function onSave() {
     const postId = variant?.postId;
@@ -93,60 +90,6 @@ export function KitchenCenter({
       // left untouched (saveDraft doesn't persist variant_state).
       else updateVariantBody(active, draft);
     });
-  }
-
-  async function onPublish() {
-    // Capture the target at click time — the user may switch channels while the
-    // publish is in flight; every write below targets THIS channel. Context
-    // mutations (markVariantPublished/updateVariantBody) are channel-keyed and
-    // always safe; component-global UI state (error/reconnect) is only written
-    // when we're still viewing this channel (activeRef).
-    const ch = active;
-    const pid = variant?.postId;
-    const text = draft;
-    const isDirty = dirty;
-    if (!pid || publishingRef.current) return;
-    publishingRef.current = true;
-    setPublishErr(null);
-    setNeedsReconnect(false);
-    setPublishing(true);
-    const onChannel = () => activeRef.current === ch;
-    try {
-      // Publish what's on screen: save the draft first if it diverges from DB.
-      if (isDirty) {
-        const r = await saveDraft(pid, text);
-        if (!r.ok) {
-          if (onChannel()) setPublishErr(r.error);
-          return;
-        }
-        updateVariantBody(ch, text);
-      }
-
-      let res: Response;
-      try {
-        res = await fetch(`/api/posts/${pid}/publish`, { method: "POST" });
-      } catch (err) {
-        if (onChannel())
-          setPublishErr(err instanceof Error ? err.message : t("networkError"));
-        return;
-      }
-      const data = (await res.json().catch(() => null)) as
-        | { success?: boolean; url?: string; error?: string; needsReconnect?: boolean }
-        | null;
-
-      if (res.ok && data?.success) {
-        markVariantPublished(ch, data.url ?? null);
-        return;
-      }
-      if (data?.needsReconnect) {
-        if (onChannel()) setNeedsReconnect(true);
-        return;
-      }
-      if (onChannel()) setPublishErr(data?.error ?? `HTTP ${res.status}`);
-    } finally {
-      publishingRef.current = false;
-      setPublishing(false);
-    }
   }
 
   return (
@@ -251,7 +194,7 @@ export function KitchenCenter({
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              readOnly={isPublished || pending || publishing}
+              readOnly={isPublished || pending}
               rows={18}
               style={{
                 width: "100%",
@@ -272,20 +215,6 @@ export function KitchenCenter({
 
           {saveErr && (
             <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--risky)" }}>{saveErr}</div>
-          )}
-          {publishErr && (
-            <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--risky)" }}>{publishErr}</div>
-          )}
-          {needsReconnect && source && (
-            <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--ink-muted)" }}>
-              {t("kitchen.notConnected")}{" "}
-              <Link
-                href={`/brands/${source.brandId}`}
-                style={{ color: "var(--sepia-bright)", textDecoration: "none", fontWeight: 500 }}
-              >
-                {t("kitchen.connectLinkedin")}
-              </Link>
-            </div>
           )}
 
           {/* Editorial Memory ("Научи Sepio") for the active variant — same panel
@@ -344,7 +273,7 @@ export function KitchenCenter({
             {t("kitchen.copy")}
           </button>
           {!isPublished && (
-            <button type="button" onClick={() => regenerate(active)} disabled={!!variant?.loading || publishing} style={btn(!!variant?.loading || publishing, false)}>
+            <button type="button" onClick={() => regenerate(active)} disabled={!!variant?.loading} style={btn(!!variant?.loading, false)}>
               {t("kitchen.regenerate")}
             </button>
           )}
@@ -359,13 +288,8 @@ export function KitchenCenter({
             </a>
           )}
           {mode === "edit" && !isPublished && (
-            <button type="button" onClick={onSave} disabled={pending || publishing || !dirty || !variant?.postId} style={btn(pending || publishing || !dirty || !variant?.postId, false)}>
+            <button type="button" onClick={onSave} disabled={pending || !dirty || !variant?.postId} style={btn(pending || !dirty || !variant?.postId, false)}>
               {pending ? t("statusSaving") : !dirty ? t("saved") : t("saveDraft")}
-            </button>
-          )}
-          {mode === "edit" && !isPublished && canPublish && variant?.postId && !variant.loading && !variant.error && (
-            <button type="button" onClick={onPublish} disabled={publishing || pending} style={btn(publishing || pending, true)}>
-              {publishing ? t("kitchen.publishing") : t("kitchen.publish")}
             </button>
           )}
         </footer>

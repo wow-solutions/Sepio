@@ -15,6 +15,22 @@ import { AngleDropdown, AngleExpansion } from "./_components/angle-dropdown";
 import { EditorialPanel } from "../posts/[id]/editorial-panel";
 import { useKitchen } from "@/components/shell/kitchen-context";
 import { KitchenCenter, SegToggle, type ViewMode } from "./_components/kitchen-preview";
+import {
+  PublishPopover,
+  type PickerRow,
+  type PublishStatus,
+} from "./_components/publish-popover";
+import {
+  CHANNEL_ORDER,
+  CHANNEL_LABEL,
+  CHANNEL_ICON,
+  type ChannelId,
+} from "@/lib/kitchen/channel-formats";
+import {
+  isPublishable,
+  publishReason,
+  orderForFanout,
+} from "@/lib/kitchen/publish-targets";
 
 type PickedTopic = {
   id: string;
@@ -101,6 +117,10 @@ type Props = {
   hasGroup?: boolean;
   // Gates the Editorial Memory panel in edit mode (same beta lock as /posts/[id]).
   betaAccess?: boolean;
+  // Per-brand connection state for the publish destination picker. Drive whether
+  // the Blog / LinkedIn rows are publishable (vs "connect first").
+  hasBlogDomain?: boolean;
+  hasLinkedIn?: boolean;
 };
 
 export function WriterClient({
@@ -110,6 +130,8 @@ export function WriterClient({
   initialPost = null,
   hasGroup = false,
   betaAccess = false,
+  hasBlogDomain = false,
+  hasLinkedIn = false,
 }: Props) {
   const t = useTranslations("writer");
   // Locale-aware number formatting via next-intl (same locale on server +
@@ -189,6 +211,12 @@ export function WriterClient({
   const [topicsRefreshKey, setTopicsRefreshKey] = useState(0);
   // Right preview panel can collapse to the right edge.
   const [previewOpen, setPreviewOpen] = useState(true);
+  // Publish destination picker (kitchen fan-out): popover open + per-run state.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [fanRunning, setFanRunning] = useState(false);
+  const [publishStatus, setPublishStatus] = useState<
+    Partial<Record<ChannelId, PublishStatus>>
+  >({});
 
   const voiceShort = shortenVoice(brandConfig.brandVoice);
   const toneTop = truncateList(brandConfig.toneAttributes, 4);
@@ -231,6 +259,12 @@ export function WriterClient({
     syncBase: kitchenSyncBase,
     source: kitchenSource,
     active: kitchenActive,
+    selected: kitchenSelected,
+    variants: kitchenVariants,
+    toggleChannel: kitchenToggle,
+    ensureVariant: kitchenEnsureVariant,
+    flushActive: kitchenFlushActive,
+    markVariantPublished: kitchenMarkVariantPublished,
     markVariantsStale: kitchenMarkVariantsStale,
   } = useKitchen();
   // Kitchen/blog mode = the writer will produce a blog (the foundation) or is
@@ -616,6 +650,121 @@ export function WriterClient({
 
     setPublishedUrl(data.url ?? null);
     setStage("published");
+  }
+
+  // ── Publish destination picker (kitchen fan-out) ───────────────────────────
+  // Gating + ordering live in lib/kitchen/publish-targets (pure + tested). Here
+  // we only bind the per-brand connection flags + the live publish state.
+  const connFlags = { hasBlogDomain, hasLinkedIn };
+  function isChannelPublished(c: ChannelId): boolean {
+    if (c === "hosted") return !!publishedUrl || lockedPublished;
+    return kitchenVariants[c]?.state === "published";
+  }
+
+  // Non-beta can only publish the blog (social fan-out is beta-gated, mirroring
+  // the rail + the variants route's 403).
+  const pickerChannels: readonly ChannelId[] = betaAccess
+    ? CHANNEL_ORDER
+    : (["hosted"] as const);
+  const pickerRows: PickerRow[] = pickerChannels.map((c) => ({
+    id: c,
+    label: CHANNEL_LABEL[c],
+    icon: CHANNEL_ICON[c],
+    checked: kitchenSelected.has(c),
+    publishable: isPublishable(c, connFlags),
+    reason: publishReason(c, connFlags),
+    published: isChannelPublished(c),
+    status: publishStatus[c],
+  }));
+
+  // Fan out to every checked + publishable + not-yet-published channel. Blog
+  // FIRST so a social variant's {{PRIMARY_URL}} resolves to the live article;
+  // each channel is independent (a failure doesn't stop the rest).
+  //
+  // Correctness (publishes the LATEST content, never stale):
+  //  1. Flush the active variant's unsaved draft (KitchenCenter) → persisted.
+  //  2. Save the blog source if dirty (BEFORE the loop, even if hosted isn't a
+  //     target) so hosted publishes the latest and the saved source is correct.
+  //  3. A dirty source bumps source_version → every social variant generated
+  //     before it is now STALE; skip those with a "regenerate" status rather
+  //     than publishing pre-edit content (the user regenerates + re-publishes).
+  async function publishSelected() {
+    if (fanRunning) return;
+    const targets = pickerChannels.filter(
+      (c) => kitchenSelected.has(c) && isPublishable(c, connFlags) && !isChannelPublished(c),
+    );
+    if (targets.length === 0) return;
+    setFanRunning(true);
+
+    // 1. Persist the active channel's unsaved edit.
+    const flushed = await kitchenFlushActive();
+    if (!flushed) {
+      setPublishStatus((s) => ({
+        ...s,
+        [kitchenActive]: { state: "failed", error: t("picker.saveFailed") },
+      }));
+      setFanRunning(false);
+      return;
+    }
+
+    // 2. Save a dirty blog source first (persist + correct hosted publish).
+    let sourceWasDirty = false;
+    if (postId && dirty) {
+      const r = await saveDraft(postId, content, editorIsBlog ? title : undefined);
+      if (!r.ok) {
+        setPublishStatus((s) => ({ ...s, hosted: { state: "failed", error: r.error } }));
+        setFanRunning(false);
+        return;
+      }
+      sourceWasDirty = true;
+      kitchenMarkVariantsStale();
+      setOriginalContent(content);
+      if (editorIsBlog) setOriginalTitle(title);
+    }
+
+    const order = orderForFanout(targets);
+    for (const c of order) {
+      // 3. Don't publish a social variant generated from a now-superseded source.
+      if (
+        c !== "hosted" &&
+        (sourceWasDirty || kitchenVariants[c]?.state === "stale")
+      ) {
+        setPublishStatus((s) => ({ ...s, [c]: { state: "failed", error: t("picker.stale") } }));
+        continue;
+      }
+      setPublishStatus((s) => ({ ...s, [c]: { state: "publishing" } }));
+      try {
+        const pid = c === "hosted" ? postId : await kitchenEnsureVariant(c);
+        if (!pid) {
+          setPublishStatus((s) => ({ ...s, [c]: { state: "failed", error: t("picker.genFailed") } }));
+          continue;
+        }
+        const res = await fetch(`/api/posts/${pid}/publish`, { method: "POST" });
+        const data = (await res.json().catch(() => null)) as
+          | { success?: boolean; url?: string; error?: string; needsReconnect?: boolean; needsConnect?: boolean }
+          | null;
+        if (res.ok && data?.success) {
+          if (c === "hosted") setPublishedUrl(data.url ?? null);
+          else kitchenMarkVariantPublished(c, data.url ?? null);
+          setPublishStatus((s) => ({ ...s, [c]: { state: "published" } }));
+        } else {
+          setPublishStatus((s) => ({
+            ...s,
+            [c]: {
+              state: "failed",
+              error: data?.error ?? `HTTP ${res.status}`,
+              needsConnect: !!(data?.needsConnect || data?.needsReconnect),
+            },
+          }));
+        }
+      } catch (err) {
+        setPublishStatus((s) => ({
+          ...s,
+          [c]: { state: "failed", error: err instanceof Error ? err.message : t("networkError") },
+        }));
+      }
+    }
+    setFanRunning(false);
   }
 
   const baseGenerateLabel =
@@ -1112,7 +1261,7 @@ export function WriterClient({
               justifyContent: "flex-end",
             }}
           >
-            {publishedUrl && lockedPublished && (
+            {publishedUrl && (
               <a
                 href={publishedUrl}
                 target="_blank"
@@ -1167,7 +1316,30 @@ export function WriterClient({
             {/* Hidden once lockedPublished (incl. just-published this session),
                 so the stage==="published" label/disabled are unreachable here —
                 the published link above takes over. */}
-            {!lockedPublished && (
+            {/* Kitchen (blog source): one "Publish ▾" that fans out over the
+                selected destinations. Standalone posts keep the single button. */}
+            {!lockedPublished && editorIsBlog && (
+              <div style={{ position: "relative" }}>
+                <button
+                  onClick={() => setPickerOpen((o) => !o)}
+                  disabled={!postId || fanRunning}
+                  style={primaryButton(!postId || fanRunning, 32)}
+                >
+                  {fanRunning ? t("picker.publishing") : `${t("picker.button")} ▾`}
+                </button>
+                {pickerOpen && (
+                  <PublishPopover
+                    rows={pickerRows}
+                    brandId={brandId}
+                    running={fanRunning}
+                    onToggle={kitchenToggle}
+                    onPublish={publishSelected}
+                    onClose={() => setPickerOpen(false)}
+                  />
+                )}
+              </div>
+            )}
+            {!lockedPublished && !editorIsBlog && (
             <button
               onClick={onPublish}
               disabled={!postId || busy}

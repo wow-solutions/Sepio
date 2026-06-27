@@ -71,6 +71,15 @@ type KitchenValue = {
   toggleChannel: (c: ChannelId) => void;
   // Make a channel active; lazily generate its variant if missing.
   selectChannel: (c: ChannelId) => void;
+  // Ensure a channel has a generated variant post; returns its postId (existing
+  // or freshly generated), or null if generation failed. Used by the publish
+  // fan-out to generate-on-the-fly for selected-but-ungenerated channels.
+  ensureVariant: (c: ChannelId) => Promise<string | null>;
+  // The active variant editor (KitchenCenter) registers a "save current draft"
+  // fn here; the publish fan-out calls flushActive() first so an unsaved edit is
+  // persisted before publishing. Returns false if the save failed.
+  registerFlush: (fn: (() => Promise<boolean>) | null) => void;
+  flushActive: () => Promise<boolean>;
   regenerate: (c: ChannelId) => void;
   // Update a variant's body in place (after a saved draft or an Editorial Memory
   // apply), so the context stays the source of truth for the rail/center.
@@ -237,16 +246,18 @@ export function KitchenProvider({
   }, []);
 
   // Generate (or fetch cached) the variant for a channel via the fan-out API.
+  // Returns the variant's postId on success, or null (no source, hosted, a
+  // deduped concurrent fetch, or a failure).
   const fetchVariant = useCallback(
-    async (c: ChannelId, force: boolean) => {
-      if (!source || c === "hosted") return;
+    async (c: ChannelId, force: boolean): Promise<string | null> => {
+      if (!source || c === "hosted") return null;
       // Dedupe concurrent fetches for the same variant (a StrictMode double-fire
       // or a fast re-click). Only non-force requests participate in the set, so a
       // force/regenerate never clears a non-force's key (it always proceeds; an
       // overlapping insert race is caught by the backend 23505 recovery).
       const inflightKey = `${source.postId}:${c}`;
       if (!force) {
-        if (inflightRef.current.has(inflightKey)) return;
+        if (inflightRef.current.has(inflightKey)) return null;
         inflightRef.current.add(inflightKey);
       }
       setVariants((v) => ({
@@ -287,12 +298,13 @@ export function KitchenProvider({
               externalUrl: v[c]?.externalUrl ?? null,
             },
           }));
-          return;
+          return null;
         }
+        const newPostId = data.post_id;
         setVariants((v) => ({
           ...v,
           [c]: {
-            postId: data.post_id!,
+            postId: newPostId,
             body: data.content_text ?? data.content_markdown ?? "",
             state: data.variant_state ?? "synced",
             loading: false,
@@ -300,6 +312,7 @@ export function KitchenProvider({
             externalUrl: v[c]?.externalUrl ?? null,
           },
         }));
+        return newPostId;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Network error";
         setVariants((v) => ({
@@ -313,11 +326,48 @@ export function KitchenProvider({
             externalUrl: v[c]?.externalUrl ?? null,
           },
         }));
+        return null;
       } finally {
         if (!force) inflightRef.current.delete(inflightKey);
       }
     },
     [source],
+  );
+
+  // Ensure a channel has a generated variant post. Returns the existing postId
+  // when one is already loaded, otherwise generates (non-force) and returns the
+  // new id. Used by the publish fan-out (generate-on-the-fly for selected-but-
+  // ungenerated channels).
+  const ensureVariant = useCallback(
+    async (c: ChannelId): Promise<string | null> => {
+      if (c === "hosted") return source?.postId ?? null;
+      const existing = variantsRef.current[c]?.postId;
+      if (existing) return existing;
+      const pid = await fetchVariant(c, false);
+      if (pid) return pid;
+      // null can mean "deduped against an in-flight preview fetch" (not a
+      // failure) — wait for that fetch to settle, then read its postId.
+      for (let i = 0; i < 40 && variantsRef.current[c]?.loading; i++) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      return variantsRef.current[c]?.postId ?? null;
+    },
+    [fetchVariant, source],
+  );
+
+  // The active variant editor registers a save-current-draft fn so the publish
+  // fan-out can persist an unsaved edit before publishing (the per-channel
+  // Publish button used to save first; the picker is now the only publish path).
+  const flushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const registerFlush = useCallback(
+    (fn: (() => Promise<boolean>) | null) => {
+      flushRef.current = fn;
+    },
+    [],
+  );
+  const flushActive = useCallback(
+    async (): Promise<boolean> => (flushRef.current ? flushRef.current() : true),
+    [],
   );
 
   // A row click only PREVIEWS the channel (sets active) — it never toggles the
@@ -391,6 +441,9 @@ export function KitchenProvider({
       syncBase,
       toggleChannel,
       selectChannel,
+      ensureVariant,
+      registerFlush,
+      flushActive,
       regenerate,
       updateVariantBody,
       markVariantPublished,
@@ -406,6 +459,9 @@ export function KitchenProvider({
       syncBase,
       toggleChannel,
       selectChannel,
+      ensureVariant,
+      registerFlush,
+      flushActive,
       regenerate,
       updateVariantBody,
       markVariantPublished,
@@ -428,6 +484,9 @@ const INERT: KitchenValue = {
   syncBase: () => {},
   toggleChannel: () => {},
   selectChannel: () => {},
+  ensureVariant: async () => null,
+  registerFlush: () => {},
+  flushActive: async () => true,
   regenerate: () => {},
   updateVariantBody: () => {},
   markVariantPublished: () => {},

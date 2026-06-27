@@ -327,6 +327,19 @@
       "stale": "Out of date",
       "staleNotice": "The source article changed since this was generated. Regenerate to refresh it."
     },
+    "picker": {
+      "title": "Publish to",
+      "button": "Publish",
+      "publishing": "Publishing…",
+      "publishN": "Publish ({count})",
+      "done": "live",
+      "failed": "failed",
+      "soon": "soon",
+      "connect": "connect",
+      "genFailed": "generation failed",
+      "stale": "regenerate first",
+      "saveFailed": "save failed"
+    },
     "length": "Length",
     "lengthApprox": "~ 1,200 chars",
     "lengthShort": "Short",
