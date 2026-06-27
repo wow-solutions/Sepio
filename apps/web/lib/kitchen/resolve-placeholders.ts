@@ -46,6 +46,19 @@ export function pickPrimaryUrl(variants: Variant[], appOrigin: string): string |
   return toAbsolute(best.external_post_url, appOrigin);
 }
 
+// Cross-links from a social post point ONLY at the blog article — never at
+// another social channel. (pickPrimaryUrl would fall back to e.g. the LinkedIn
+// URL when no blog exists; that's wrong for the {{PRIMARY_URL}} token, which
+// means "the fuller article".) Returns the published hosted variant's absolute
+// URL, or null → caller strips the token.
+export function pickBlogUrl(variants: Variant[], appOrigin: string): string | null {
+  const blog = variants.find(
+    (v) => v.platform === "hosted" && isPublishedWithUrl(v),
+  );
+  if (!blog || blog.external_post_url === null) return null;
+  return toAbsolute(blog.external_post_url, appOrigin);
+}
+
 // Substitute every {{PRIMARY_URL}} token. When primaryUrl is null, remove the
 // token and tidy the artifacts it leaves behind (empty markdown links, empty
 // parens, doubled spaces).
@@ -54,8 +67,17 @@ export function applyPrimaryUrl(body: string, primaryUrl: string | null): string
     return body.split(PRIMARY_URL_TOKEN).join(primaryUrl);
   }
 
-  // Strip the token, then collapse the most common orphaned wrappers.
-  let out = body.split(PRIMARY_URL_TOKEN).join("");
+  // First drop a dangling invite that sits DIRECTLY in front of the token
+  // ("Read the full article: {{PRIMARY_URL}}") — without the URL the label is
+  // meaningless and would publish as orphaned copy. Targeted: only when the
+  // phrase immediately precedes the token (won't touch a markdown link or text
+  // that merely contains these words elsewhere).
+  let out = body.replace(
+    /[^\S\n]*\b(?:read(?:\s+the)?\s+full\s+article|full\s+article|full\s+piece|read\s+more|learn\s+more|more\s+here|details?)\b\s*:?\s*\{\{PRIMARY_URL\}\}/gi,
+    "",
+  );
+  // Strip any remaining tokens, then collapse the most common orphaned wrappers.
+  out = out.split(PRIMARY_URL_TOKEN).join("");
   // Empty markdown link: [text]() → text
   out = out.replace(/\[([^\]]*)\]\(\s*\)/g, "$1");
   // Orphaned empty parens left by the removed URL.
@@ -64,7 +86,8 @@ export function applyPrimaryUrl(body: string, primaryUrl: string | null): string
   out = out.replace(/[^\S\n]{2,}/g, " ");
   // Tidy a stray space before sentence punctuation.
   out = out.replace(/ +([.,;:!?])/g, "$1");
-  return out;
+  // Trim whitespace/newlines the removals may have left at the edges.
+  return out.trim();
 }
 
 // Cross-links from a thin format must point at the blog. Guard the fan-out so a

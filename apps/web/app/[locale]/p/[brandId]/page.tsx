@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import type { Locale } from "@/i18n/routing";
@@ -27,13 +28,15 @@ export async function generateMetadata({
   params: Params;
 }): Promise<Metadata> {
   const { brandId } = await params;
+  // Gate first: /p/ index exists only as the noindex duplicate for own-domain
+  // brands. No active domain → 404 (page body), so don't expose the title here.
+  const blogDomain = await activeBlogDomainForBrand(brandId);
+  if (!blogDomain) return {};
   const brandName = await getBrandName(brandId);
   const title = brandName ? `${brandName} — Blog` : "Blog";
-  // noindex the Sepio-domain copy once the brand has its own blog domain.
-  const blogDomain = await activeBlogDomainForBrand(brandId);
   return {
     title,
-    robots: blogDomain ? { index: false, follow: true } : undefined,
+    robots: { index: false, follow: true },
   };
 }
 
@@ -44,6 +47,10 @@ export default async function BrandBlogIndexPage({
 }) {
   const { locale, brandId } = await params;
   setRequestLocale(locale as Locale); // next-intl static-render hook
+
+  // No active domain → blog isn't connected → /p/ is not public. 404.
+  const blogDomain = await activeBlogDomainForBrand(brandId);
+  if (!blogDomain) notFound();
 
   const [posts, brandName] = await Promise.all([
     listBrandBlogPosts(brandId, locale),

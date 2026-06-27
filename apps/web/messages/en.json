@@ -451,6 +451,12 @@
     "bulkClear": "Clear",
     "selectRowAria": "Select post for bulk action",
     "viewOnLinkedIn": "Open on LinkedIn ↗",
+    "viewOn": {
+      "linkedin": "Open on LinkedIn ↗",
+      "blog": "Open article ↗",
+      "wordpress": "Open in WordPress ↗",
+      "generic": "Open ↗"
+    },
     "emptyContent": "(empty)",
     "empty": {
       "title": "No posts yet.",

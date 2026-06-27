@@ -58,3 +58,18 @@ export const activeBlogDomainForBrand = cache(
     return (data as string | null) ?? null;
   },
 );
+
+// Strict variant for PUBLISH-TIME gating. Unlike activeBlogDomainForBrand, a
+// resolver/RPC failure THROWS instead of collapsing to null — the publish route
+// must answer a DB outage with 500, not a misleading "connect a domain" (the
+// brand may already have one). Not request-cached: publish is a one-shot.
+export async function activeBlogDomainForBrandStrict(
+  brandId: string,
+): Promise<string | null> {
+  const supabase = (await createClient()) as unknown as SupabaseClient;
+  const { data, error } = await supabase.rpc("blog_domain_for_brand", {
+    p_brand_id: brandId,
+  });
+  if (error) throw new Error(`blog_domain_for_brand failed: ${error.message}`);
+  return (data as string | null) ?? null;
+}

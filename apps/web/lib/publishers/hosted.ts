@@ -39,17 +39,16 @@ async function getActiveDomainInfo(
   return { domain, primaryLocale: primaryLocale ?? "en" };
 }
 
-// Public URL of a published article. If the brand publishes under its own
-// domain, return the absolute client-domain URL (the real, indexable page that
-// cross-links {{PRIMARY_URL}} should point at); else the Sepio-hosted relative
-// path /{locale}/p/{brandId}/{slug}. Pure — domain info is fetched once upfront.
+// Public URL of a published article on the brand's own connected domain — the
+// real, indexable page that cross-links {{PRIMARY_URL}} point at. The blog only
+// publishes when a domain is active (enforced in publish() below), so there is
+// no Sepio-hosted /p/ fallback: that path is a noindex duplicate, never the
+// canonical address. Pure — domain info is fetched once upfront.
 function buildPublicUrl(
-  domainInfo: { domain: string; primaryLocale: string } | null,
-  brandId: string,
+  domainInfo: { domain: string; primaryLocale: string },
   slug: string,
   locale: string,
 ): string {
-  if (!domainInfo) return `/${locale}/p/${brandId}/${slug}`;
   return `https://${domainInfo.domain}${blogPath(domainInfo.primaryLocale, locale, slug)}`;
 }
 
@@ -93,8 +92,19 @@ export const hostedAdapter: PublishAdapter = {
     // user-scoped RLS path. brand_blog_posts is owner-scoped + public-read.
     const service = createServiceRoleClient();
 
-    // Resolve the brand's public URL shape once (client domain vs Sepio-hosted).
+    // Blog publishes ONLY to a connected custom domain. This is the hard
+    // invariant (the publish route gate is just a fast pre-check): without an
+    // active domain we refuse here, so no brand_blog_posts row is written and
+    // no /p/ URL ever lands in external_post_url. Any caller bypassing the route
+    // hits the same wall.
     const domainInfo = await getActiveDomainInfo(service, brandId);
+    if (!domainInfo) {
+      return {
+        ok: false,
+        status: 400,
+        message: "Connect a custom domain to your brand to publish the blog.",
+      };
+    }
 
     // TODO: regen database.types.ts — brand_blog_posts isn't in the generated
     // Database types yet (migration 20260609120000 lags the types), so the
@@ -136,7 +146,7 @@ export const hostedAdapter: PublishAdapter = {
         return {
           ok: true,
           externalId: (ins.data as { id: string }).id,
-          externalUrl: buildPublicUrl(domainInfo, brandId, slug, post.language),
+          externalUrl: buildPublicUrl(domainInfo, slug, post.language),
         };
       }
       if ((ins.error as { code?: string }).code !== "23505") {
@@ -163,7 +173,7 @@ export const hostedAdapter: PublishAdapter = {
         return {
           ok: true,
           externalId: (upd.data as { id: string }).id,
-          externalUrl: buildPublicUrl(domainInfo, brandId, slug, post.language),
+          externalUrl: buildPublicUrl(domainInfo, slug, post.language),
         };
       }
       // Owned by a different post → try the suffixed candidate next iteration.

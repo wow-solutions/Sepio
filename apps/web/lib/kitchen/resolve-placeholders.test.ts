@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   pickPrimaryUrl,
+  pickBlogUrl,
   applyPrimaryUrl,
   hostedFirstGuard,
   resolveBody,
@@ -80,6 +81,41 @@ describe("pickPrimaryUrl", () => {
   });
 });
 
+describe("pickBlogUrl", () => {
+  test("returns the published hosted url (absolute)", () => {
+    const variants = [
+      v("linkedin", "published", "https://linkedin.com/posts/2"),
+      v("hosted", "published", "/es/p/brand/slug"),
+    ];
+    expect(pickBlogUrl(variants, ORIGIN)).toBe(`${ORIGIN}/es/p/brand/slug`);
+  });
+
+  test("returns an absolute hosted (own-domain) url unchanged", () => {
+    const variants = [v("hosted", "published", "https://blog.client.com/slug")];
+    expect(pickBlogUrl(variants, ORIGIN)).toBe("https://blog.client.com/slug");
+  });
+
+  // The regression that motivated pickBlogUrl: with no blog published, the
+  // cross-link must be NULL (→ stripped), never another social channel's URL.
+  test("returns null when only social channels are published (NOT the linkedin url)", () => {
+    const variants = [
+      v("linkedin", "published", "https://linkedin.com/posts/2"),
+      v("x", "published", "https://x.com/i/3"),
+    ];
+    expect(pickBlogUrl(variants, ORIGIN)).toBeNull();
+  });
+
+  test("ignores an unpublished hosted variant", () => {
+    expect(
+      pickBlogUrl([v("hosted", "draft", "/es/p/brand/slug")], ORIGIN),
+    ).toBeNull();
+  });
+
+  test("returns null for an empty variant set", () => {
+    expect(pickBlogUrl([], ORIGIN)).toBeNull();
+  });
+});
+
 describe("applyPrimaryUrl", () => {
   test("replaces a single token", () => {
     expect(applyPrimaryUrl("Read more: {{PRIMARY_URL}}", "https://x.test/a")).toBe(
@@ -111,6 +147,22 @@ describe("applyPrimaryUrl", () => {
 
   test("null url: no token leaves body untouched", () => {
     expect(applyPrimaryUrl("Nothing to replace.", null)).toBe("Nothing to replace.");
+  });
+
+  test("null url: drops a dangling invite that directly precedes the token", () => {
+    expect(applyPrimaryUrl("Read the full article: {{PRIMARY_URL}}", null)).toBe("");
+  });
+
+  test("null url: drops the invite line, keeps the rest, trims edges", () => {
+    expect(
+      applyPrimaryUrl("Great breakdown of the costs.\n\nRead more: {{PRIMARY_URL}}", null),
+    ).toBe("Great breakdown of the costs.");
+  });
+
+  test("null url: leaves an unrelated 'details' word alone when not before the token", () => {
+    expect(applyPrimaryUrl("More details inside. {{PRIMARY_URL}}", null)).toBe(
+      "More details inside.",
+    );
   });
 });
 

@@ -451,6 +451,12 @@
     "bulkClear": "Снять выбор",
     "selectRowAria": "Выбрать пост для массового действия",
     "viewOnLinkedIn": "Открыть в LinkedIn ↗",
+    "viewOn": {
+      "linkedin": "Открыть в LinkedIn ↗",
+      "blog": "Открыть статью ↗",
+      "wordpress": "Открыть в WordPress ↗",
+      "generic": "Открыть ↗"
+    },
     "emptyContent": "(пусто)",
     "empty": {
       "title": "Постов пока нет.",

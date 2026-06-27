@@ -7,10 +7,10 @@ import { adapters, type PublishablePost, type PublishOutcome } from "@/lib/publi
 import { publishToLinkedIn } from "@/lib/publishers/linkedin";
 import {
   applyPrimaryUrl,
-  pickPrimaryUrl,
-  hostedFirstGuard,
+  pickBlogUrl,
   type Variant,
 } from "@/lib/kitchen/resolve-placeholders";
+import { activeBlogDomainForBrandStrict } from "@/lib/blog-domain";
 
 // POST /api/posts/[id]/publish
 //
@@ -25,7 +25,7 @@ import {
 
 const ParamsSchema = z.object({ id: z.string().uuid() });
 
-type ErrorBody = { error: string; needsReconnect?: boolean };
+type ErrorBody = { error: string; needsReconnect?: boolean; needsConnect?: boolean };
 function jsonError(body: ErrorBody, status: number): Response {
   return NextResponse.json(body, { status });
 }
@@ -154,7 +154,27 @@ export async function POST(
       return jsonError({ error: "Post content is empty" }, 400);
     }
   } else if (post.platform === "hosted") {
-    // no pre-resolution needed
+    // Blog publishes ONLY to a connected custom domain. No active domain →
+    // refuse here (before claim) with a connect prompt. The hostedAdapter
+    // enforces the same invariant as the real lock; this is the fast, friendly
+    // path. A resolver/RPC failure must surface as 500 (strict), NOT collapse
+    // into "connect a domain" (the brand may already have one).
+    let blogDomain: string | null;
+    try {
+      blogDomain = await activeBlogDomainForBrandStrict(post.brand_id);
+    } catch (err) {
+      console.error("blog domain resolve failed:", err);
+      return jsonError({ error: "Could not verify your blog domain. Try again." }, 500);
+    }
+    if (!blogDomain) {
+      return jsonError(
+        {
+          error: "Connect a custom domain to your brand to publish the blog.",
+          needsConnect: true,
+        },
+        400,
+      );
+    }
   } else if (post.platform === "wordpress") {
     const { data: wp } = await service
       .from("brand_oauth_tokens")
@@ -182,36 +202,44 @@ export async function POST(
 
   // 2.5 Cross-link resolution (Content Kitchen). A social variant's body may embed
   //     the literal {{PRIMARY_URL}} token pointing back at the fuller blog article.
-  //     Substitute it with the published blog URL, and refuse to publish a social
-  //     variant before its hosted foundation exists. Done BEFORE the claim so a
-  //     guard failure needs no claim release.
+  //     Channels publish independently (no blog-first ordering): if a blog article
+  //     for this group is published, substitute its URL; otherwise strip the token.
+  //     The link only ever points at the BLOG (pickBlogUrl), never another social
+  //     channel. Done for EVERY non-hosted post — even without a content_group —
+  //     so a stray {{PRIMARY_URL}} never publishes literally. BEFORE the claim.
   let resolvedText = post.content_text;
   let resolvedPublishable = publishable;
-  if (post.platform !== "hosted" && post.content_group_id) {
-    const { data: sibRaw } = await db
-      .from("posts")
-      .select("platform, status, external_post_url")
-      .eq("content_group_id", post.content_group_id);
-    const siblings = (sibRaw ?? []) as Variant[];
-
-    const guard = hostedFirstGuard(post.platform, siblings);
-    if (!guard.ok) return jsonError({ error: guard.reason }, 409);
+  if (post.platform !== "hosted") {
+    let siblings: Variant[] = [];
+    if (post.content_group_id) {
+      const { data: sibRaw } = await db
+        .from("posts")
+        .select("platform, status, external_post_url")
+        .eq("content_group_id", post.content_group_id);
+      siblings = (sibRaw ?? []) as Variant[];
+    }
 
     const appOrigin = new URL(request.url).origin;
-    const primaryUrl = pickPrimaryUrl(siblings, appOrigin);
+    const blogUrl = pickBlogUrl(siblings, appOrigin);
     resolvedText =
-      post.content_text !== null ? applyPrimaryUrl(post.content_text, primaryUrl) : null;
+      post.content_text !== null ? applyPrimaryUrl(post.content_text, blogUrl) : null;
     resolvedPublishable = {
       ...publishable,
       content_text:
         publishable.content_text !== null
-          ? applyPrimaryUrl(publishable.content_text, primaryUrl)
+          ? applyPrimaryUrl(publishable.content_text, blogUrl)
           : null,
       content_markdown:
         publishable.content_markdown !== null
-          ? applyPrimaryUrl(publishable.content_markdown, primaryUrl)
+          ? applyPrimaryUrl(publishable.content_markdown, blogUrl)
           : null,
     };
+
+    // Re-check non-empty AFTER stripping: a body that was only {{PRIMARY_URL}}
+    // passes the pre-resolution empty check but is empty once the token is gone.
+    if (resolvedText === null || !resolvedText.trim()) {
+      return jsonError({ error: "Post content is empty" }, 400);
+    }
   }
 
   // 3. Atomically CLAIM the post for publishing — prevents double-publish when

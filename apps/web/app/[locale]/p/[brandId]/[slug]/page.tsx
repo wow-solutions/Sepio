@@ -16,6 +16,14 @@ export async function generateMetadata({
   params: Params;
 }): Promise<Metadata> {
   const { locale, brandId, slug } = await params;
+
+  // Gate FIRST, before fetching the post: the Sepio-hosted /p/ page exists only
+  // as a noindex duplicate for brands that publish under their own domain. With
+  // no active domain the page 404s — so don't leak the title/OG via metadata
+  // either. (Mirrors the notFound() in the page body below.)
+  const blogDomain = await activeBlogDomainForBrand(brandId);
+  if (!blogDomain) return {};
+
   const post = await getBrandBlogPost(brandId, slug, locale);
   if (!post) return {}; // page renders notFound()
 
@@ -23,15 +31,12 @@ export async function generateMetadata({
   const description = post.excerpt ?? undefined;
   const img = post.cover_image_url ?? undefined;
 
-  // Once the brand publishes under its own domain (blog.client.com), this
-  // Sepio-domain copy is a duplicate — noindex it so the client-domain article
-  // is the one search/AI engines surface (it is self-canonical + indexable).
-  const blogDomain = await activeBlogDomainForBrand(brandId);
-
   return {
     title,
     description,
-    robots: blogDomain ? { index: false, follow: true } : undefined,
+    // Always noindex here: we only reach this point when the brand has its own
+    // domain, where that article is the canonical, indexable copy.
+    robots: { index: false, follow: true },
     openGraph: {
       type: "article",
       title,
@@ -57,6 +62,11 @@ export default async function BrandBlogPostPage({
 }) {
   const { locale, brandId, slug } = await params;
   setRequestLocale(locale as Locale); // next-intl static-render hook
+
+  // Serve only as the noindex duplicate of a brand's own-domain blog. No active
+  // domain → the blog isn't "connected", so /p/ is not a public address. 404.
+  const blogDomain = await activeBlogDomainForBrand(brandId);
+  if (!blogDomain) notFound();
 
   const post = await getBrandBlogPost(brandId, slug, locale);
   if (!post) notFound();

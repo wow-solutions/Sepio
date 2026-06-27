@@ -240,8 +240,13 @@ export function PostsList({ groups, locale }: Props) {
           const canSelect = isSelectable(g);
           const isSelected = selected.has(g.key);
           const label = g.topic || g.preview;
-          const externalUrl =
-            g.channels.find((c) => c.externalPostUrl)?.externalPostUrl ?? null;
+          // Per-channel "open" links: ONLY for channels actually published with
+          // a real URL, labelled by platform. (Previously this grabbed the first
+          // channel with any URL — the blog — and mislabelled it "Open in
+          // LinkedIn", so the link showed even when LinkedIn was still a draft.)
+          const publishedLinks = g.channels.filter(
+            (c) => c.status === "published" && c.externalPostUrl,
+          );
 
           return (
             <li
@@ -367,9 +372,10 @@ export function PostsList({ groups, locale }: Props) {
                   >
                     {t("openAction")}
                   </Link>
-                  {externalUrl && (
+                  {publishedLinks.map((c) => (
                     <a
-                      href={externalUrl}
+                      key={c.postId}
+                      href={c.externalPostUrl as string}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{
@@ -378,9 +384,9 @@ export function PostsList({ groups, locale }: Props) {
                         textDecoration: "underline",
                       }}
                     >
-                      {t("viewOnLinkedIn")}
+                      {t(`viewOn.${viewOnKey(c.platform)}`)}
                     </a>
-                  )}
+                  ))}
                   {canSelect && (
                     <span style={{ marginLeft: "auto" }}>
                       <DeleteChainButton group={g} />
@@ -469,6 +475,15 @@ function quickBtn(disabled: boolean) {
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.5 : 1,
   } as const;
+}
+
+// Map a channel platform to its `posts.viewOn.*` i18n key. Unknown platforms
+// fall back to a generic "open" label.
+function viewOnKey(platform: string): "linkedin" | "blog" | "wordpress" | "generic" {
+  if (platform === "linkedin") return "linkedin";
+  if (platform === "hosted") return "blog";
+  if (platform === "wordpress") return "wordpress";
+  return "generic";
 }
 
 function formatDate(iso: string, locale: string): string {
