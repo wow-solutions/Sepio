@@ -52,11 +52,14 @@ export function KitchenCenter({
   const [draft, setDraft] = useState("");
   const [pending, startSave] = useTransition();
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [humanizing, setHumanizing] = useState(false);
+  const [humanizeSnapshot, setHumanizeSnapshot] = useState<string | null>(null);
 
   const body = variant?.body ?? "";
   useEffect(() => {
     setDraft(body);
     setSaveErr(null);
+    setHumanizeSnapshot(null);
   }, [body, active]);
 
   const dirty = draft !== body;
@@ -77,6 +80,47 @@ export function KitchenCenter({
     });
     return () => registerFlush(null);
   }, [registerFlush, variant?.postId, isPublished, draft, body, active, updateVariantBody]);
+
+  // Humanize the LIVE draft of this variant via the stateless /api/posts/humanize
+  // (mirrors the blog editor's onHumanize). Leaves the result in `draft` so the
+  // existing Save persists it — humanize itself does not touch the DB.
+  async function onHumanize() {
+    if (!draft.trim() || humanizing) return;
+    setSaveErr(null);
+    const snapshot = draft;
+    setHumanizing(true);
+    try {
+      const res = await fetch("/api/posts/humanize", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: draft, brand_id: source?.brandId }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as
+          | { error?: unknown }
+          | null;
+        setSaveErr(
+          data && typeof data.error === "string" && data.error
+            ? data.error
+            : `HTTP ${res.status}`,
+        );
+        return;
+      }
+      const data = (await res.json()) as { text: string };
+      setHumanizeSnapshot(snapshot);
+      setDraft(data.text);
+    } catch (err) {
+      setSaveErr(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setHumanizing(false);
+    }
+  }
+
+  function onUndoHumanize() {
+    if (humanizeSnapshot === null) return;
+    setDraft(humanizeSnapshot);
+    setHumanizeSnapshot(null);
+  }
 
   function onSave() {
     const postId = variant?.postId;
@@ -286,6 +330,22 @@ export function KitchenCenter({
             >
               {t("kitchen.viewPublished")}
             </a>
+          )}
+          {mode === "edit" && !isPublished && humanizeSnapshot !== null && (
+            <button type="button" onClick={onUndoHumanize} disabled={humanizing} style={btn(humanizing, false)} title={t("undoTooltip")}>
+              {t("undo")}
+            </button>
+          )}
+          {mode === "edit" && !isPublished && (
+            <button
+              type="button"
+              onClick={onHumanize}
+              disabled={humanizing || pending || !draft.trim()}
+              style={btn(humanizing || pending || !draft.trim(), false)}
+              title={t("rehumanizeTooltip")}
+            >
+              {humanizing ? t("humanizing") : t("rehumanize")}
+            </button>
           )}
           {mode === "edit" && !isPublished && (
             <button type="button" onClick={onSave} disabled={pending || !dirty || !variant?.postId} style={btn(pending || !dirty || !variant?.postId, false)}>
