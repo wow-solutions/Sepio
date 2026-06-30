@@ -21,6 +21,9 @@ type TopicResponseRow = {
   source_metadata: unknown;
   score: number | null;
   created_at: string;
+  // Feeds the scorer's recency rotation (cold-first). Present on DB pool rows;
+  // omitted from the client response (optional so the response map type-checks).
+  last_shown_at?: string | null;
   // 'success' | 'failed' | null — lets the picker badge already-hydrated topics.
   article_extract_status: string | null;
 };
@@ -52,18 +55,22 @@ export async function GET(
   if (!user) return jsonError({ error: "Not signed in" }, 401);
 
   // Fetch unused, unexpired candidates. RLS blocks other brands automatically.
-  // Take a generous pool (up to 60) — scorer picks top-6 with per-source quota.
-  // Order by score first (nulls last) so the 3/2/1 mix can actually be filled:
-  // a time-only window can hold <3 web_search rows when DataForSEO emits many
-  // per run, starving the quota. created_at is the tie-break (freshest first).
+  // Take a generous pool (up to 60) — scorer picks top-6 with per-source quota
+  // and recency rotation.
+  //
+  // Order LEAST-RECENTLY-SHOWN first (nulls = never shown = first), then score,
+  // then created_at. This keeps the coldest rows inside the 60-row window even if
+  // the pool grows past 60, so the in-memory cooldown rotation in selectTopN
+  // stays authoritative (it can't rotate to a cold row the SQL window dropped).
   const { data: pool, error } = await supabase
     .from("topic_candidates")
     .select(
-      "id, topic_text, source, source_metadata, score, created_at, article_extract_status",
+      "id, topic_text, source, source_metadata, score, created_at, last_shown_at, article_extract_status",
     )
     .eq("brand_id", brandId)
     .is("used_at", null)
     .gt("expires_at", new Date().toISOString())
+    .order("last_shown_at", { ascending: true, nullsFirst: true })
     .order("score", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(60);
