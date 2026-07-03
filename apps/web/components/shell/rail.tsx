@@ -134,7 +134,7 @@ export function Rail({
               <div
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 9.5,
+                  fontSize: 10.5,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
                   color: "var(--brand)",
@@ -171,10 +171,10 @@ function RailGroupLabel({ children }: { children: React.ReactNode }) {
     <div
       style={{
         fontFamily: "var(--font-mono)",
-        fontSize: 9.5,
+        fontSize: 10.5,
         letterSpacing: "0.16em",
         textTransform: "uppercase",
-        color: "var(--ink-faint)",
+        color: "var(--ink-muted)",
         margin: "0 12px 8px",
       }}
     >

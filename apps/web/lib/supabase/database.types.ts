@@ -24,6 +24,7 @@ export type Database = {
           display_name: string | null
           fal_flux_used_this_period: number
           id: string
+          is_blog_admin: boolean
           lemonsqueezy_customer_id: string | null
           lemonsqueezy_subscription_id: string | null
           lemonsqueezy_updated_at: string | null
@@ -41,6 +42,7 @@ export type Database = {
           display_name?: string | null
           fal_flux_used_this_period?: number
           id: string
+          is_blog_admin?: boolean
           lemonsqueezy_customer_id?: string | null
           lemonsqueezy_subscription_id?: string | null
           lemonsqueezy_updated_at?: string | null
@@ -58,6 +60,7 @@ export type Database = {
           display_name?: string | null
           fal_flux_used_this_period?: number
           id?: string
+          is_blog_admin?: boolean
           lemonsqueezy_customer_id?: string | null
           lemonsqueezy_subscription_id?: string | null
           lemonsqueezy_updated_at?: string | null
@@ -112,6 +115,203 @@ export type Database = {
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      blog_posts: {
+        Row: {
+          author_id: string | null
+          author_name: string | null
+          author_slug: string | null
+          body: string | null
+          cover_image_url: string | null
+          created_at: string
+          description: string | null
+          firewall_ack_at: string | null
+          firewall_ack_by: string | null
+          id: string
+          locale: string
+          material_updated_at: string | null
+          og_description: string | null
+          og_image_url: string | null
+          og_title: string | null
+          published_at: string | null
+          slug: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          author_name?: string | null
+          author_slug?: string | null
+          body?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          description?: string | null
+          firewall_ack_at?: string | null
+          firewall_ack_by?: string | null
+          id?: string
+          locale?: string
+          material_updated_at?: string | null
+          og_description?: string | null
+          og_image_url?: string | null
+          og_title?: string | null
+          published_at?: string | null
+          slug: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          author_name?: string | null
+          author_slug?: string | null
+          body?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          description?: string | null
+          firewall_ack_at?: string | null
+          firewall_ack_by?: string | null
+          id?: string
+          locale?: string
+          material_updated_at?: string | null
+          og_description?: string | null
+          og_image_url?: string | null
+          og_title?: string | null
+          published_at?: string | null
+          slug?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blog_posts_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blog_posts_firewall_ack_by_fkey"
+            columns: ["firewall_ack_by"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_blog_domains: {
+        Row: {
+          brand_id: string
+          cname_target: string | null
+          created_at: string
+          domain: string
+          id: string
+          last_error: string | null
+          status: string
+          updated_at: string
+          vercel_domain_id: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          brand_id: string
+          cname_target?: string | null
+          created_at?: string
+          domain: string
+          id?: string
+          last_error?: string | null
+          status?: string
+          updated_at?: string
+          vercel_domain_id?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          brand_id?: string
+          cname_target?: string | null
+          created_at?: string
+          domain?: string
+          id?: string
+          last_error?: string | null
+          status?: string
+          updated_at?: string
+          vercel_domain_id?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_blog_domains_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: true
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brand_blog_posts: {
+        Row: {
+          body_markdown: string | null
+          brand_id: string
+          cover_image_alt: string | null
+          cover_image_url: string | null
+          created_at: string
+          excerpt: string | null
+          id: string
+          locale: string
+          published_at: string | null
+          slug: string
+          source_post_id: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body_markdown?: string | null
+          brand_id: string
+          cover_image_alt?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          excerpt?: string | null
+          id?: string
+          locale?: string
+          published_at?: string | null
+          slug: string
+          source_post_id?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body_markdown?: string | null
+          brand_id?: string
+          cover_image_alt?: string | null
+          cover_image_url?: string | null
+          created_at?: string
+          excerpt?: string | null
+          id?: string
+          locale?: string
+          published_at?: string | null
+          slug?: string
+          source_post_id?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_blog_posts_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_blog_posts_source_post_id_fkey"
+            columns: ["source_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
             referencedColumns: ["id"]
           },
         ]
@@ -351,10 +551,15 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           description: string | null
+          detected_at: string | null
+          detected_confidence: string | null
+          detected_platform: string | null
+          detected_signals: Json
           id: string
           industry: string | null
           industry_category_id: string | null
           name: string
+          platform_override: string | null
           primary_language: string
           slug: string
           updated_at: string
@@ -368,10 +573,15 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           description?: string | null
+          detected_at?: string | null
+          detected_confidence?: string | null
+          detected_platform?: string | null
+          detected_signals?: Json
           id?: string
           industry?: string | null
           industry_category_id?: string | null
           name: string
+          platform_override?: string | null
           primary_language?: string
           slug: string
           updated_at?: string
@@ -385,10 +595,15 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           description?: string | null
+          detected_at?: string | null
+          detected_confidence?: string | null
+          detected_platform?: string | null
+          detected_signals?: Json
           id?: string
           industry?: string | null
           industry_category_id?: string | null
           name?: string
+          platform_override?: string | null
           primary_language?: string
           slug?: string
           updated_at?: string
@@ -409,6 +624,41 @@ export type Database = {
             columns: ["industry_category_id"]
             isOneToOne: false
             referencedRelation: "industry_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_groups: {
+        Row: {
+          brand_id: string
+          created_at: string
+          id: string
+          selected_platforms: string[]
+          source_version: number
+          updated_at: string
+        }
+        Insert: {
+          brand_id: string
+          created_at?: string
+          id?: string
+          selected_platforms?: string[]
+          source_version?: number
+          updated_at?: string
+        }
+        Update: {
+          brand_id?: string
+          created_at?: string
+          id?: string
+          selected_platforms?: string[]
+          source_version?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_groups_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
             referencedColumns: ["id"]
           },
         ]
@@ -788,15 +1038,20 @@ export type Database = {
           approved_at: string | null
           approved_by: string | null
           brand_id: string
+          canonical_url: string | null
+          content_group_id: string | null
           content_markdown: string | null
           content_text: string | null
+          cover_image_alt: string | null
           cover_image_url: string | null
           created_at: string
           cta_url: string | null
           detection_breakdown: Json | null
           detection_score: number | null
+          excerpt: string | null
           external_post_id: string | null
           external_post_url: string | null
+          generated_from_source_version: number | null
           hashtags: string[] | null
           id: string
           image_generation_method: string | null
@@ -809,23 +1064,32 @@ export type Database = {
           research_keywords: string[] | null
           research_topic: string | null
           scheduled_for: string | null
+          slug: string | null
+          source_post_id: string | null
           source_type: string
           status: string
+          title: string | null
           updated_at: string
+          variant_state: string
         }
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
           brand_id: string
+          canonical_url?: string | null
+          content_group_id?: string | null
           content_markdown?: string | null
           content_text?: string | null
+          cover_image_alt?: string | null
           cover_image_url?: string | null
           created_at?: string
           cta_url?: string | null
           detection_breakdown?: Json | null
           detection_score?: number | null
+          excerpt?: string | null
           external_post_id?: string | null
           external_post_url?: string | null
+          generated_from_source_version?: number | null
           hashtags?: string[] | null
           id?: string
           image_generation_method?: string | null
@@ -838,23 +1102,32 @@ export type Database = {
           research_keywords?: string[] | null
           research_topic?: string | null
           scheduled_for?: string | null
+          slug?: string | null
+          source_post_id?: string | null
           source_type?: string
           status?: string
+          title?: string | null
           updated_at?: string
+          variant_state?: string
         }
         Update: {
           approved_at?: string | null
           approved_by?: string | null
           brand_id?: string
+          canonical_url?: string | null
+          content_group_id?: string | null
           content_markdown?: string | null
           content_text?: string | null
+          cover_image_alt?: string | null
           cover_image_url?: string | null
           created_at?: string
           cta_url?: string | null
           detection_breakdown?: Json | null
           detection_score?: number | null
+          excerpt?: string | null
           external_post_id?: string | null
           external_post_url?: string | null
+          generated_from_source_version?: number | null
           hashtags?: string[] | null
           id?: string
           image_generation_method?: string | null
@@ -867,9 +1140,13 @@ export type Database = {
           research_keywords?: string[] | null
           research_topic?: string | null
           scheduled_for?: string | null
+          slug?: string | null
+          source_post_id?: string | null
           source_type?: string
           status?: string
+          title?: string | null
           updated_at?: string
+          variant_state?: string
         }
         Relationships: [
           {
@@ -884,6 +1161,20 @@ export type Database = {
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "posts_content_group_id_fkey"
+            columns: ["content_group_id"]
+            isOneToOne: false
+            referencedRelation: "content_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "posts_source_post_id_fkey"
+            columns: ["source_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
             referencedColumns: ["id"]
           },
         ]
@@ -1034,6 +1325,7 @@ export type Database = {
           score: number | null
           source: string
           source_metadata: Json
+          topic_norm: string | null
           topic_text: string
           used_at: string | null
         }
@@ -1052,6 +1344,7 @@ export type Database = {
           score?: number | null
           source: string
           source_metadata?: Json
+          topic_norm?: string | null
           topic_text: string
           used_at?: string | null
         }
@@ -1070,6 +1363,7 @@ export type Database = {
           score?: number | null
           source?: string
           source_metadata?: Json
+          topic_norm?: string | null
           topic_text?: string
           used_at?: string | null
         }
@@ -1098,18 +1392,27 @@ export type Database = {
       apply_ls_subscription: {
         Args: {
           p_account_id: string
-          p_plan_tier: string
-          p_plan_status: string
-          p_period_end: string | null
           p_customer_id: string
+          p_period_end: string
+          p_plan_status: string
+          p_plan_tier: string
           p_subscription_id: string
           p_updated_at: string
         }
         Returns: string
       }
+      blog_domain_for_brand: { Args: { p_brand_id: string }; Returns: string }
       cache_topic_article: {
         Args: { p_candidate_id: string; p_extract: Json; p_status: string }
         Returns: undefined
+      }
+      filter_new_against_pool: {
+        Args: {
+          p_brand_id: string
+          p_candidate_texts: string[]
+          p_threshold?: number
+        }
+        Returns: string[]
       }
       filter_unused_topic_texts: {
         Args: {
@@ -1128,6 +1431,10 @@ export type Database = {
         Args: { p_account_id: string; p_limit: number }
         Returns: boolean
       }
+      increment_source_version: {
+        Args: { p_group_id: string }
+        Returns: undefined
+      }
       increment_topic_impressions: {
         Args: { p_candidate_ids: string[] }
         Returns: undefined
@@ -1136,28 +1443,37 @@ export type Database = {
         Args: {
           p_brand_id: string
           p_candidate_id?: string
+          p_content_markdown?: string
           p_content_text: string
           p_detection_breakdown: Json
           p_detection_score: number
+          p_excerpt?: string
           p_language: string
           p_platform: string
           p_research_topic?: string
+          p_slug?: string
           p_source_type: string
           p_status: string
+          p_title?: string
         }
         Returns: {
           approved_at: string | null
           approved_by: string | null
           brand_id: string
+          canonical_url: string | null
+          content_group_id: string | null
           content_markdown: string | null
           content_text: string | null
+          cover_image_alt: string | null
           cover_image_url: string | null
           created_at: string
           cta_url: string | null
           detection_breakdown: Json | null
           detection_score: number | null
+          excerpt: string | null
           external_post_id: string | null
           external_post_url: string | null
+          generated_from_source_version: number | null
           hashtags: string[] | null
           id: string
           image_generation_method: string | null
@@ -1170,9 +1486,13 @@ export type Database = {
           research_keywords: string[] | null
           research_topic: string | null
           scheduled_for: string | null
+          slug: string | null
+          source_post_id: string | null
           source_type: string
           status: string
+          title: string | null
           updated_at: string
+          variant_state: string
         }
         SetofOptions: {
           from: "*"
@@ -1180,6 +1500,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      insert_topic_candidates_dedup: {
+        Args: { p_brand_id: string; p_rows: Json }
+        Returns: number
       }
       log_industry_search_miss: {
         Args: {
@@ -1190,6 +1514,15 @@ export type Database = {
           p_top_5_ids?: string[]
         }
         Returns: undefined
+      }
+      resolve_blog_domain: {
+        Args: { p_host: string }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          locales: string[]
+          primary_locale: string
+        }[]
       }
       search_industries: {
         Args: { p_lang?: string; p_limit?: number; p_query: string }

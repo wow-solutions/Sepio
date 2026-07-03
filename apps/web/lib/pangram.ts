@@ -5,11 +5,16 @@ import { z } from "zod";
 // Auth: header `x-api-key`
 // Body: { text: string }
 //
-// CQ-2 (plan-eng-review 2026-05-13): on failure, throw. Caller must NOT
-// write to detection_dataset and must show retry toast. Do not return
-// mock/default values.
+// checkText is the strict primitive: on failure it THROWS (no mock/default
+// values). Detection is no longer a product promise (ADR-0018), so the generate
+// route uses the best-effort tryDetection wrapper below — a Pangram failure must
+// degrade to a null score, never block saving a paid draft.
 
 const PANGRAM_URL = "https://text.api.pangram.com/v3";
+
+// A hung Pangram connection must not hold the serverless function open until
+// the route's maxDuration (300s) — that loses the already-generated draft.
+const PANGRAM_TIMEOUT_MS = 20_000;
 
 const WindowSchema = z.object({
   text: z.string(),
@@ -74,9 +79,19 @@ export async function checkText(
         "x-api-key": apiKey,
       },
       body: JSON.stringify({ text }),
-      signal: opts?.signal,
+      // Caller's signal composes with (never replaces) the hard timeout.
+      signal: opts?.signal
+        ? AbortSignal.any([opts.signal, AbortSignal.timeout(PANGRAM_TIMEOUT_MS)])
+        : AbortSignal.timeout(PANGRAM_TIMEOUT_MS),
     });
   } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new PangramError(
+        `Pangram request timed out after ${PANGRAM_TIMEOUT_MS}ms`,
+        undefined,
+        err,
+      );
+    }
     throw new PangramError("Pangram request failed (network)", undefined, err);
   }
 
@@ -102,4 +117,21 @@ export async function checkText(
   }
 
   return parsed.data;
+}
+
+// Best-effort detection (ADR-0018). Wraps checkText and swallows ANY error into a
+// null result the caller can persist as-is — a Pangram outage, timeout, bad shape,
+// or missing API key must never throw away an already-generated (paid) draft.
+// Success → { score: round(fraction_human*100), breakdown: response }.
+export async function tryDetection(
+  text: string,
+  opts?: { apiKey?: string; signal?: AbortSignal },
+): Promise<{ score: number | null; breakdown: PangramResponse | null }> {
+  try {
+    const resp = await checkText(text, opts);
+    return { score: deriveDetectionScore(resp), breakdown: resp };
+  } catch (err) {
+    console.error("[pangram] detection failed (best-effort, skipped):", err);
+    return { score: null, breakdown: null };
+  }
 }

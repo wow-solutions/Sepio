@@ -132,11 +132,11 @@ export function TopicPicker({
           onClick={load}
           disabled={loading || disabled}
           style={{
-            ...mono(10, "var(--ink-muted)"),
+            ...mono(13, "var(--ink-muted)"),
             background: "transparent",
             border: 0,
             cursor: loading || disabled ? "not-allowed" : "pointer",
-            padding: "2px 6px",
+            padding: "4px 8px",
             opacity: loading ? 0.5 : 1,
           }}
           title={t("refresh")}
@@ -192,7 +192,7 @@ export function TopicPicker({
         >
           <div>{t("empty")}</div>
           <div
-            style={{ ...mono(10, "var(--ink-faint)"), marginTop: 6 }}
+            style={{ ...mono(10.5, "var(--ink-muted)"), marginTop: 6 }}
           >
             {t("emptyHint")}
           </div>
@@ -272,7 +272,6 @@ function TopicCard({
           border: 0,
           borderRadius: 6,
           cursor: disabled ? "not-allowed" : "pointer",
-          outline: "none",
           width: "100%",
         }}
       >
@@ -286,7 +285,7 @@ function TopicCard({
         >
           <span
             style={{
-              ...mono(9, sourceColor),
+              ...mono(10, sourceColor),
               textTransform: "uppercase",
               letterSpacing: "0.1em",
               padding: "2px 5px",
@@ -300,7 +299,7 @@ function TopicCard({
           {topic.article_extract_status === "success" && (
             <span
               style={{
-                ...mono(9, "var(--ok, var(--info))"),
+                ...mono(10, "var(--ok, var(--info))"),
                 textTransform: "uppercase",
                 letterSpacing: "0.1em",
               }}
@@ -311,7 +310,7 @@ function TopicCard({
           {selected && (
             <span
               style={{
-                ...mono(9, "var(--info)"),
+                ...mono(10, "var(--info)"),
                 textTransform: "uppercase",
                 letterSpacing: "0.1em",
               }}
@@ -417,7 +416,7 @@ function renderMetadata(topic: Topic) {
   return (
     <div
       style={{
-        ...mono(10, "var(--ink-faint)"),
+        ...mono(10.5, "var(--ink-muted)"),
         marginTop: 6,
         overflow: "hidden",
         textOverflow: "ellipsis",

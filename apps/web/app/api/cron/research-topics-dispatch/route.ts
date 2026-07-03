@@ -22,6 +22,7 @@
 // make this unsafe well before ~100 brands. TODO: durable queue (Inngest is NOT
 // yet an apps/web dependency) or per-brand Vercel crons before the fleet grows.
 
+import { authorizeCron } from "@/lib/cron-auth";
 import { SITE_URL } from "@/lib/seo";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
@@ -53,13 +54,6 @@ function jsonError(body: ErrorBody, status: number): Response {
   return Response.json(body, { status });
 }
 
-function authorize(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = request.headers.get("authorization");
-  return header === `Bearer ${secret}`;
-}
-
 // Base URL for the internal self-fetch into per-brand worker routes. On Vercel
 // use the canonical production domain (exempt from Deployment Protection); local
 // dev hits the dev server.
@@ -70,7 +64,7 @@ function resolveBaseUrl(): string {
 
 // Vercel Cron uses GET по умолчанию — но we also accept POST for manual invocation.
 async function handle(request: Request): Promise<Response> {
-  if (!authorize(request)) {
+  if (!authorizeCron(request)) {
     return jsonError({ error: "Unauthorized" }, 401);
   }
 

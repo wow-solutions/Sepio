@@ -5,6 +5,7 @@
 // function instance с own 300s timeout (Pro plan).
 
 import { runBrandResearch } from "@/lib/_private/cron-worker";
+import { authorizeCron } from "@/lib/cron-auth";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
 export const maxDuration = 300; // 5 min, Vercel Pro
@@ -23,18 +24,11 @@ function jsonError(body: ErrorBody, status: number): Response {
   return Response.json(body, { status });
 }
 
-function authorize(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = request.headers.get("authorization");
-  return header === `Bearer ${secret}`;
-}
-
 export async function POST(
   request: Request,
   ctx: { params: Promise<{ brandId: string }> },
 ): Promise<Response> {
-  if (!authorize(request)) {
+  if (!authorizeCron(request)) {
     return jsonError({ error: "Unauthorized" }, 401);
   }
 

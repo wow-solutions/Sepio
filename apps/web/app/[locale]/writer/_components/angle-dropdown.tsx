@@ -389,7 +389,6 @@ function Row({
           : "0.5px solid color-mix(in srgb, var(--ink) 10%, transparent)",
         cursor: "pointer",
         width: "100%",
-        outline: "none",
         transition: "background 90ms ease",
       }}
     >

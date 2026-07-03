@@ -11,6 +11,8 @@ import {
 } from "@/lib/angles-shared";
 import { saveDraft } from "./actions";
 import { TopicPicker } from "./_components/topic-picker";
+import { GenerationProgress } from "./_components/generation-progress";
+import { primaryPill } from "@/components/ui/button-styles";
 import { AngleDropdown, AngleExpansion } from "./_components/angle-dropdown";
 import { EditorialPanel } from "../posts/[id]/editorial-panel";
 import { useKitchen } from "@/components/shell/kitchen-context";
@@ -217,6 +219,16 @@ export function WriterClient({
   const [publishStatus, setPublishStatus] = useState<
     Partial<Record<ChannelId, PublishStatus>>
   >({});
+  // Channels published THIS session (drives the success banner). Not a source
+  // of truth for published state — that stays publishedUrl/stage/variant state.
+  const [publishSuccess, setPublishSuccess] = useState<
+    { channel: string; url: string | null }[] | null
+  >(null);
+  // Generation run guard: a late response from an abandoned run must not
+  // overwrite the state of a newer one. The controller lets the user stop
+  // WAITING — the server keeps generating and still saves the draft.
+  const generationRun = useRef(0);
+  const generateAbortRef = useRef<AbortController | null>(null);
 
   const voiceShort = shortenVoice(brandConfig.brandVoice);
   const toneTop = truncateList(brandConfig.toneAttributes, 4);
@@ -397,9 +409,15 @@ export function WriterClient({
 
   async function onGenerate() {
     setError(null);
+    setPublishSuccess(null);
     setStage("generating");
-    setPostId(null);
-    setStatus(null);
+    // NOTE: postId/status/content are NOT cleared here — they apply only on
+    // success below, so stopping the wait (or a failure) keeps the previous
+    // draft fully usable (Codex wave-2 review).
+    const runId = ++generationRun.current;
+    generateAbortRef.current?.abort();
+    const controller = new AbortController();
+    generateAbortRef.current = controller;
 
     const payload: {
       brand_id: string;
@@ -458,29 +476,44 @@ export function WriterClient({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
     } catch (err) {
+      if (generationRun.current !== runId) return;
+      if (err instanceof DOMException && err.name === "AbortError") {
+        // User stopped waiting — the server finishes and saves the draft to
+        // Posts anyway, so this is a return to the previous editor state.
+        setStage(postId ? "ready" : "idle");
+        return;
+      }
       setError(err instanceof Error ? err.message : t("networkError"));
       setStage("error");
       return;
     }
+    if (generationRun.current !== runId) return;
 
     if (!res.ok) {
       const data = (await res.json().catch(() => null)) as
         | { error?: unknown; stage?: unknown }
         | null;
+      // Server-provided error strings are deliberate user-facing copy; the
+      // HTTP-status + stage internals go to the console only.
+      console.error(
+        `generate failed: HTTP ${res.status}`,
+        data?.stage ?? "",
+        data?.error ?? "",
+      );
       const errText =
         data && typeof data.error === "string" && data.error
           ? data.error
-          : `HTTP ${res.status}`;
-      const note =
-        data && typeof data.stage === "string" ? ` (${data.stage})` : "";
-      setError(`${errText}${note}`);
+          : t("serverError");
+      setError(errText);
       setStage("error");
       return;
     }
 
     const data = (await res.json()) as GenerateResponse;
+    if (generationRun.current !== runId) return;
     const platform = data.platform ?? "linkedin";
     const isBlog = platform === "hosted";
     // Did the editor's post format change with this generation? (postPlatform
@@ -566,10 +599,11 @@ export function WriterClient({
       const data = (await res.json().catch(() => null)) as
         | { error?: unknown }
         | null;
+      console.error(`humanize failed: HTTP ${res.status}`, data?.error ?? "");
       const errText =
         data && typeof data.error === "string" && data.error
           ? data.error
-          : `HTTP ${res.status}`;
+          : t("serverError");
       setError(errText);
       setStage("error");
       return;
@@ -641,7 +675,8 @@ export function WriterClient({
       | null;
 
     if (!res.ok || !data?.success) {
-      const msg = data?.error ?? `HTTP ${res.status}`;
+      console.error(`publish failed: HTTP ${res.status}`, data?.error ?? "");
+      const msg = data?.error ?? t("publishFailed");
       const reconnectNote = data?.needsReconnect ? ` · ${t("publishReconnect")}` : "";
       setError(`${msg}${reconnectNote}`);
       setStage("error");
@@ -649,6 +684,9 @@ export function WriterClient({
     }
 
     setPublishedUrl(data.url ?? null);
+    setPublishSuccess([
+      { channel: postPlatform ?? "post", url: data.url ?? null },
+    ]);
     setStage("published");
   }
 
@@ -695,6 +733,7 @@ export function WriterClient({
     );
     if (targets.length === 0) return;
     setFanRunning(true);
+    setPublishSuccess(null);
 
     // 1. Persist the active channel's unsaved edit.
     const flushed = await kitchenFlushActive();
@@ -747,12 +786,17 @@ export function WriterClient({
           if (c === "hosted") setPublishedUrl(data.url ?? null);
           else kitchenMarkVariantPublished(c, data.url ?? null);
           setPublishStatus((s) => ({ ...s, [c]: { state: "published" } }));
+          setPublishSuccess((prev) => [
+            ...(prev ?? []),
+            { channel: c, url: data.url ?? null },
+          ]);
         } else {
+          console.error(`publish ${c} failed: HTTP ${res.status}`, data?.error ?? "");
           setPublishStatus((s) => ({
             ...s,
             [c]: {
               state: "failed",
-              error: data?.error ?? `HTTP ${res.status}`,
+              error: data?.error ?? t("publishFailed"),
               needsConnect: !!(data?.needsConnect || data?.needsReconnect),
             },
           }));
@@ -1014,18 +1058,6 @@ export function WriterClient({
               {error}
             </div>
           )}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginTop: 10,
-            }}
-          >
-            <span style={mono(11, "var(--ink-faint)")}>
-              Claude Sonnet 4.6
-            </span>
-          </div>
         </Section>
       </aside>
       )}
@@ -1116,7 +1148,23 @@ export function WriterClient({
             minHeight: 0,
           }}
         >
-          {!postId && !content.trim() ? (
+          {publishSuccess && publishSuccess.length > 0 && (
+            <PublishSuccessBanner
+              items={publishSuccess}
+              onDismiss={() => setPublishSuccess(null)}
+            />
+          )}
+          {stage === "generating" ? (
+            // The 30–180s wait gets a real progress surface (bar + elapsed +
+            // forming-document skeleton) instead of a silent empty canvas.
+            <GenerationProgress
+              expectedS={selectorIsBlog ? 130 : 35}
+              label={t("generating")}
+              hint={t("generatingHint")}
+              cancelLabel={t("generatingStop")}
+              onCancel={() => generateAbortRef.current?.abort()}
+            />
+          ) : !postId && !content.trim() ? (
             <EmptyComposer />
           ) : blogPreview ? (
             editorIsBlog ? (
@@ -1802,26 +1850,7 @@ function inputBase(isTextarea: boolean): React.CSSProperties {
 }
 
 function primaryButton(disabled: boolean, height: number): React.CSSProperties {
-  return {
-    width: "100%",
-    height,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    padding: "0 16px",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    borderRadius: 9999,
-    fontSize: height >= 40 ? 14 : 13,
-    fontWeight: 500,
-    border: "1px solid var(--sepio-sepia)",
-    background: "var(--sepio-sepia)",
-    color: "var(--sepio-cream)",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-    transition: "opacity 120ms",
-  };
+  return primaryPill({ disabled, height, fullWidth: true });
 }
 
 function secondaryButton(
@@ -1901,6 +1930,84 @@ function Em({ children }: { children: React.ReactNode }) {
 
 // Shown in the center when there is no draft yet — the "Start with one idea"
 // hero. The actual prompt input lives in the left rail; this points to it.
+// Success confirmation after a publish (single or fan-out): loud enough to not
+// miss, with the live link(s). Purely presentational — published state itself
+// lives in publishedUrl/stage/variant state.
+function PublishSuccessBanner({
+  items,
+  onDismiss,
+}: {
+  items: { channel: string; url: string | null }[];
+  onDismiss: () => void;
+}) {
+  const t = useTranslations("writer");
+  return (
+    <div
+      role="status"
+      style={{
+        maxWidth: "var(--editor-max-w)",
+        margin: "0 auto 20px",
+        padding: "12px 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        flexWrap: "wrap",
+        background: "var(--pass-bg)",
+        border: "1px solid rgba(122,160,121,0.30)",
+        borderRadius: 10,
+      }}
+    >
+      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--pass)" }}>
+        {t("publishBanner.title")}
+      </span>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", flex: 1 }}>
+        {items.map((it) =>
+          it.url ? (
+            <a
+              key={it.channel}
+              href={it.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: "var(--ink)",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+              }}
+            >
+              {CHANNEL_LABEL[it.channel as ChannelId] ?? it.channel} ↗
+            </a>
+          ) : (
+            <span
+              key={it.channel}
+              style={{ fontSize: 13, color: "var(--ink-muted)" }}
+            >
+              {CHANNEL_LABEL[it.channel as ChannelId] ?? it.channel}
+            </span>
+          ),
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label={t("publishBanner.dismiss")}
+        style={{
+          border: "none",
+          background: "transparent",
+          color: "var(--ink-muted)",
+          fontSize: 16,
+          lineHeight: 1,
+          cursor: "pointer",
+          padding: 4,
+        }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 function EmptyComposer() {
   const t = useTranslations("writer");
   return (

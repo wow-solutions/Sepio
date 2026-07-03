@@ -10,6 +10,7 @@ import { buildBlogArticleUserText } from "./_private/blog-article";
 import type { KeywordIdea } from "./_private/dataforseo-keywords";
 import type { AngleId, Stance } from "./angles-shared";
 import { PRIMARY_URL_TOKEN } from "./kitchen/channel-formats";
+import { withTransientRetry } from "./retry";
 
 // Per-format draft generation. Two cached system blocks:
 //   1. Brand context (voice, VOC, samples) — stable per brand, so one topic
@@ -40,6 +41,10 @@ export type GenerateResult = {
     cache_read_input_tokens: number;
     cache_creation_input_tokens: number;
   };
+  // True when the model hit max_tokens and the output was cut off mid-stream
+  // (response.stop_reason === "max_tokens") — the caller got a truncated
+  // draft, not an intentionally short one.
+  truncated: boolean;
 };
 
 type VocItem = { quote: string; source?: string };
@@ -347,7 +352,13 @@ async function callClaude(
     throw new ClaudeError("ANTHROPIC_API_KEY is not configured");
   }
 
-  const client = new Anthropic({ apiKey });
+  // SDK default timeout is 10 min — longer than any route's maxDuration (300s),
+  // so Vercel would kill a slow call with an opaque 504 before the SDK fails
+  // into the ClaudeError path. maxRetries: 0 because the SDK retries timeouts
+  // and 429/5xx too: one 240s attempt + a retry blows the 300s budget (blog runs
+  // primary language first, siblings after — latency stacks). withTransientRetry
+  // below replaces it with a single bounded retry that skips timeouts entirely.
+  const client = new Anthropic({ apiKey, timeout: 240_000, maxRetries: 0 });
 
   const systemText = buildBrandContext(
     config,
@@ -358,25 +369,29 @@ async function callClaude(
 
   let response: Anthropic.Message;
   try {
-    response = await client.messages.create(
-      {
-        model: modelIdForTier(spec.model),
-        max_tokens: spec.maxTokens,
-        temperature: TEMPERATURE_BY_FORMAT[format],
-        system: [
+    response = await withTransientRetry(
+      () =>
+        client.messages.create(
           {
-            type: "text",
-            text: systemText,
-            cache_control: { type: "ephemeral" },
+            model: modelIdForTier(spec.model),
+            max_tokens: spec.maxTokens,
+            temperature: TEMPERATURE_BY_FORMAT[format],
+            system: [
+              {
+                type: "text",
+                text: systemText,
+                cache_control: { type: "ephemeral" },
+              },
+              {
+                type: "text",
+                text: spec.directive,
+                cache_control: { type: "ephemeral" },
+              },
+            ],
+            messages: [{ role: "user", content: userText }],
           },
-          {
-            type: "text",
-            text: spec.directive,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: [{ role: "user", content: userText }],
-      },
+          { signal: opts?.signal },
+        ),
       { signal: opts?.signal },
     );
   } catch (err) {
@@ -393,6 +408,24 @@ async function callClaude(
     throw new ClaudeError("Unknown error calling Claude", undefined, err);
   }
 
+  const result = buildGenerateResult(response);
+
+  if (result.truncated) {
+    // Grep-able prefix for Vercel logs — model/format/output_tokens pinpoint
+    // which generation got cut off without needing to correlate request IDs.
+    console.warn(
+      `[claude] truncated output: model=${modelIdForTier(spec.model)} format=${format} output_tokens=${result.usage.output_tokens}`,
+    );
+  }
+
+  return result;
+}
+
+// Pure: assemble the GenerateResult from a raw Claude response. Extracted for
+// unit tests. Filters to text blocks, joins, trims, and throws ClaudeError on
+// empty output — same contract callClaude always had, plus `truncated` so
+// callers can tell a cut-off draft from an intentionally short one.
+export function buildGenerateResult(response: Anthropic.Message): GenerateResult {
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
@@ -412,5 +445,6 @@ async function callClaude(
       cache_creation_input_tokens:
         response.usage.cache_creation_input_tokens ?? 0,
     },
+    truncated: response.stop_reason === "max_tokens",
   };
 }

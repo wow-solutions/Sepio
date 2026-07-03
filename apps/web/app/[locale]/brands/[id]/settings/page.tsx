@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { brandColor } from "@/lib/brand-color";
 import { DifferentiationSchema } from "@/lib/market-brain/derived-only";
 import { coerceClientBrain } from "@/lib/client-brain/schema";
@@ -72,12 +71,12 @@ export default async function BrandSettingsPage({ params }: PageProps) {
 
   // website_url for Client Brain "study site" (separate read; not in the typed
   // brand select above to keep that query stable).
-  const { data: siteRow } = await (supabase as unknown as SupabaseClient)
+  const { data: siteRow } = await supabase
     .from("brands")
     .select("website_url")
     .eq("id", brandId)
     .maybeSingle();
-  const website = (siteRow as { website_url?: string | null } | null)?.website_url ?? null;
+  const website = siteRow?.website_url ?? null;
 
   // Market Brain + Editorial Memory are beta-gated — only fetch when in beta.
   const betaAccess = account?.beta_access === true;

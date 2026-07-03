@@ -30,10 +30,7 @@ function jsonError(body: ErrorBody, status: number): Response {
   return NextResponse.json(body, { status });
 }
 
-// Local row type: posts.title/slug/excerpt/cover_image_alt were added in
-// migration 20260609120000; database.types.ts regen is pending, so we read
-// the row through an untyped client and shape it here.
-// TODO: regen database.types.ts, then drop the cast + local type.
+// Local row type: the exact shape the publish flow reads off `posts`.
 interface PostRow {
   id: string;
   brand_id: string;
@@ -115,7 +112,7 @@ export async function POST(
   } = await supabase.auth.getUser();
   if (!user) return jsonError({ error: "Not signed in" }, 401);
 
-  const db = supabase as unknown as SupabaseClient;
+  const db = supabase;
   const { data: postData } = await db
     .from("posts")
     .select(
@@ -304,9 +301,7 @@ export async function POST(
   // 6. Mark published (service-role: avoids RLS/transient flakiness leaving the
   //    post stranded in 'publishing' after it's already live on the destination).
   const publishedAt = new Date().toISOString();
-  // Cast to the untyped client (file idiom, see `db` above) — database.types.ts
-  // doesn't yet carry variant_state, so the typed Update rejects it.
-  const { error: updateErr } = await (service as unknown as SupabaseClient)
+  const { error: updateErr } = await service
     .from("posts")
     .update({
       status: "published",

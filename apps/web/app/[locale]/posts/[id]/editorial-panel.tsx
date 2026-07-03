@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { applyBrandRule, updatePostContent } from "./actions";
+import { primaryPill } from "@/components/ui/button-styles";
 import { RULE_TYPES, RULE_SCOPES, type RuleType, type RuleScope } from "@/lib/brand-rules/schema";
 import type { RefineResponseBody } from "@/lib/brand-rules/refine-response";
 
@@ -728,20 +729,6 @@ const textBtn: CSSProperties = {
 };
 
 function primaryBtn(disabled: boolean): CSSProperties {
-  return {
-    height: 38,
-    padding: "0 20px",
-    borderRadius: 6,
-    fontSize: 13,
-    fontWeight: 500,
-    fontFamily: "inherit",
-    cursor: disabled ? "not-allowed" : "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    border: "1px solid var(--ink)",
-    background: disabled ? "var(--ink-faint)" : "var(--ink)",
-    color: "var(--bg)",
-    borderColor: disabled ? "var(--ink-faint)" : "var(--ink)",
-    whiteSpace: "nowrap",
-  };
+  // Shared sepia pill — one primary vocabulary across writer/kitchen/panel.
+  return { ...primaryPill({ disabled, height: 38 }), padding: "0 20px" };
 }

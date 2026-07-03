@@ -68,9 +68,7 @@ export async function detectPlatformForBrand(brandId: string): Promise<ConnectRe
 
   const fp = await detectPlatform(brand.website_url);
 
-  // detected_* columns aren't in the generated types yet (migration 20260609120000).
-  // TODO: regen database.types.ts, then drop this cast.
-  const svc = createServiceRoleClient() as unknown as SupabaseClient;
+  const svc = createServiceRoleClient();
   const { error } = await svc
     .from("brands")
     .update({

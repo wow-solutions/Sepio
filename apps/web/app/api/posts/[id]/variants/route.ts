@@ -10,7 +10,6 @@
 // precedent as the refine route; auth is the session cookie.
 
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { generateVariantFromSource, ClaudeError } from "@/lib/claude";
 import {
@@ -19,11 +18,7 @@ import {
   type ChannelId,
 } from "@/lib/kitchen/channel-formats";
 import { getPostBody, bodyUpdateForPlatform } from "@/lib/post-body";
-import { differentiationContextBlocks } from "@/lib/market-brain/differentiation-context";
-import {
-  mergeRuleWords,
-  renderVoiceNoteBlocks,
-} from "@/lib/brand-rules/rules-context";
+import { assembleMoatContext } from "@/lib/moat-context";
 
 export const maxDuration = 60; // a single LLM call (short-form), but Sonnet headroom.
 
@@ -113,13 +108,7 @@ export async function POST(
   const platform = parsed.data.platform as ChannelId;
   const force = parsed.data.force;
 
-  // database.types.ts lags the kitchen migration (T-types): `content_groups`
-  // isn't in the generated types at all, and `posts` is missing content_group_id
-  // / source_post_id / variant_state / generated_from_source_version. Drive those
-  // reads/writes through an untyped client (the established escape — see
-  // publish/route.ts `db = supabase as unknown as SupabaseClient`). RLS still
-  // applies; we lose only compile-time column checking on the new columns.
-  const db = supabase as unknown as SupabaseClient;
+  const db = supabase;
 
   // The requested post (RLS owner read).
   const { data: postRaw } = await db
@@ -246,11 +235,12 @@ export async function POST(
   }
 
   // ── Generate ───────────────────────────────────────────────────────────────
-  // Same moat assembly as the generate route: merged word columns → configForGen,
-  // differentiation + voice_note blocks → extraContext.
-  // These three reads are independent (all keyed on source.brand_id) — run them
+  // Same moat assembly as the generate route, via the shared assembleMoatContext
+  // helper (Market Brain + Client Brain + Editorial Memory) — no more copy-paste
+  // drift (this route previously dropped Client Brain facts).
+  // These reads are independent (all keyed on source.brand_id) — run them
   // concurrently to save round-trips before the LLM call (R-09).
-  const [configRes, diffRes, rulesRes] = await Promise.all([
+  const [configRes, diffRes, rulesRes, proofRes] = await Promise.all([
     supabase.from("brand_configs").select("*").eq("brand_id", source.brand_id).maybeSingle(),
     supabase
       .from("market_differentiation")
@@ -262,6 +252,13 @@ export async function POST(
       .select("rule_type, scope, rule_text")
       .eq("brand_id", source.brand_id)
       .eq("active", true)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
+    supabase
+      .from("proof_items")
+      .select("kind, body, source, verifiable")
+      .eq("brand_id", source.brand_id)
+      // Stable order — the block is a prompt-cache key; unordered rows churn it.
       .order("created_at", { ascending: true })
       .order("id", { ascending: true }),
   ]);
@@ -278,21 +275,19 @@ export async function POST(
   if (rulesErr) {
     console.error("brand_rules read failed:", rulesErr.message);
   }
+
+  const { data: proofRows, error: proofErr } = proofRes;
+  if (proofErr) {
+    console.error("proof_items read failed:", proofErr.message);
+  }
+
   const rules = rulesErr ? [] : (ruleRows ?? []);
-  const mergedWords = mergeRuleWords(
+  const { configForGen, extraContext } = assembleMoatContext({
+    config,
+    diffRow: diffErr ? null : diffRow,
     rules,
-    config.forbidden_words ?? [],
-    config.required_phrases ?? [],
-  );
-  const configForGen = {
-    ...config,
-    forbidden_words: mergedWords.forbidden,
-    required_phrases: mergedWords.required,
-  };
-  const extraContext = [
-    ...differentiationContextBlocks(diffErr ? null : diffRow),
-    ...renderVoiceNoteBlocks(rules),
-  ];
+    proofRows: proofErr ? [] : (proofRows ?? []),
+  });
 
   let generated;
   try {

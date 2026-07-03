@@ -11,6 +11,7 @@
 // 200 quickly). The onboarding trigger (PR-C) hits the per-brand route directly.
 
 import { after } from "next/server";
+import { authorizeCron } from "@/lib/cron-auth";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { sweepExpiredScrapeCache } from "@/lib/market-brain/scrape-cache";
 
@@ -28,13 +29,6 @@ function jsonError(body: ErrorBody, status: number): Response {
   return Response.json(body, { status });
 }
 
-function authorize(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = request.headers.get("authorization");
-  return header === `Bearer ${secret}`;
-}
-
 // Resolve our own deployment URL for fire-and-forget fetch into per-brand routes.
 // Same shape as research-topics-dispatch (VERCEL_URL on prod, 127.0.0.1 locally
 // to dodge the IPv6 localhost resolution issue).
@@ -46,7 +40,7 @@ function resolveBaseUrl(): string {
 }
 
 async function handle(request: Request): Promise<Response> {
-  if (!authorize(request)) {
+  if (!authorizeCron(request)) {
     return jsonError({ error: "Unauthorized" }, 401);
   }
 

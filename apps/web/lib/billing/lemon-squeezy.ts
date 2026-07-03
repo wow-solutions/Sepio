@@ -220,7 +220,13 @@ export async function syncSubscription(
     p_account_id: accountId,
     p_plan_tier: tier,
     p_plan_status: status,
-    p_period_end: periodEndFor(status, { renews_at: event.renewsAt, ends_at: event.endsAt }),
+    // p_period_end is timestamptz with no NOT NULL — SQL accepts null (writes a
+    // nullable column) — but supabase gen can't express arg nullability, so the
+    // generated type says `string`. Keep the null through a cast.
+    p_period_end: periodEndFor(status, {
+      renews_at: event.renewsAt,
+      ends_at: event.endsAt,
+    }) as unknown as string,
     p_customer_id: event.customerId,
     p_subscription_id: event.subscriptionId,
     p_updated_at: event.updatedAt,

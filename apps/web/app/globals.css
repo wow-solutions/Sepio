@@ -570,3 +570,19 @@
   padding: 1px 5px;
   border-radius: 4px;
 }
+
+/* ── Route-level loading fallback (segment loading.tsx files) ──────────────── */
+.route-loading-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+  animation: route-loading-pulse 1.2s ease-in-out infinite;
+}
+@keyframes route-loading-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-loading-dot { animation: none; opacity: 0.8; }
+}

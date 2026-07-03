@@ -10,6 +10,7 @@
 
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
+import { primaryPill } from "@/components/ui/button-styles";
 import type { ChannelId } from "@/lib/kitchen/channel-formats";
 
 export type PublishStatus = {
@@ -136,16 +137,12 @@ export function PublishPopover({
           onClick={onPublish}
           disabled={count === 0 || running}
           style={{
+            ...primaryPill({
+              disabled: count === 0 || running,
+              height: 34,
+              fullWidth: true,
+            }),
             marginTop: 6,
-            height: 34,
-            borderRadius: 8,
-            border: 0,
-            background:
-              count === 0 || running ? "var(--border-strong)" : "var(--brand)",
-            color: count === 0 || running ? "var(--ink-faint)" : "#fff",
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: count === 0 || running ? "not-allowed" : "pointer",
           }}
         >
           {running ? t("publishing") : t("publishN", { count })}

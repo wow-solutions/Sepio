@@ -3,6 +3,7 @@ import {
   PangramError,
   checkText,
   deriveDetectionScore,
+  tryDetection,
   type PangramResponse,
 } from "./pangram";
 
@@ -131,6 +132,52 @@ describe("checkText", () => {
       }
       expect(caught).toBeInstanceOf(PangramError);
       expect((caught as PangramError).message).toMatch(/PANGRAM_API_KEY/);
+    } finally {
+      if (original !== undefined) process.env.PANGRAM_API_KEY = original;
+    }
+  });
+});
+
+describe("tryDetection (best-effort, ADR-0018)", () => {
+  test("REGRESSION: a fetch failure degrades to {null, null}, never throws", async () => {
+    installFetch(mock(async () => {
+      throw new Error("ECONNREFUSED");
+    }));
+
+    const result = await tryDetection("hello", { apiKey: "test-key" });
+    expect(result).toEqual({ score: null, breakdown: null });
+  });
+
+  test("REGRESSION: a timeout degrades to {null, null}, never throws", async () => {
+    installFetch(mock(async () => {
+      const err = new Error("timed out");
+      err.name = "TimeoutError";
+      throw err;
+    }));
+
+    const result = await tryDetection("hello", { apiKey: "test-key" });
+    expect(result).toEqual({ score: null, breakdown: null });
+  });
+
+  test("a successful response yields score = round(fraction_human*100) + breakdown", async () => {
+    installFetch(mock(async () =>
+      new Response(
+        JSON.stringify({ ...sampleResponse, fraction_human: 0.876 }),
+        { status: 200 },
+      ),
+    ));
+
+    const result = await tryDetection("hello", { apiKey: "test-key" });
+    expect(result.score).toBe(88);
+    expect(result.breakdown?.fraction_human).toBe(0.876);
+  });
+
+  test("a missing PANGRAM_API_KEY degrades to {null, null}, never throws", async () => {
+    const original = process.env.PANGRAM_API_KEY;
+    delete process.env.PANGRAM_API_KEY;
+    try {
+      const result = await tryDetection("hello");
+      expect(result).toEqual({ score: null, breakdown: null });
     } finally {
       if (original !== undefined) process.env.PANGRAM_API_KEY = original;
     }

@@ -20,6 +20,8 @@ import { useTranslations } from "next-intl";
 import { useKitchen } from "@/components/shell/kitchen-context";
 import { CHANNEL_LABEL } from "@/lib/kitchen/channel-formats";
 import { EditorialPanel } from "@/app/[locale]/posts/[id]/editorial-panel";
+import { GenerationProgress } from "./generation-progress";
+import { primaryPill } from "@/components/ui/button-styles";
 import { saveDraft } from "../actions";
 
 export type ViewMode = "preview" | "edit";
@@ -212,7 +214,11 @@ export function KitchenCenter({
             </div>
           )}
           {variant?.loading ? (
-            <Center text={t("kitchen.generating")} />
+            <GenerationProgress
+              compact
+              expectedS={25}
+              label={t("kitchen.generating")}
+            />
           ) : variant?.error ? (
             <ErrorBox msg={variant.error} retryLabel={t("kitchen.retry")} onRetry={() => regenerate(active)} />
           ) : !body ? (
@@ -484,6 +490,10 @@ function ErrorBox({ msg, retryLabel, onRetry }: { msg: string; retryLabel: strin
 }
 
 function btn(disabled: boolean, primary: boolean): React.CSSProperties {
+  if (primary) {
+    // Shared sepia pill — one primary vocabulary across writer/kitchen/panel.
+    return { ...primaryPill({ disabled, height: 32 }), padding: "0 14px" };
+  }
   return {
     height: 32,
     padding: "0 14px",
@@ -491,9 +501,9 @@ function btn(disabled: boolean, primary: boolean): React.CSSProperties {
     fontSize: 13,
     fontWeight: 500,
     cursor: disabled ? "not-allowed" : "pointer",
-    border: primary ? "1px solid var(--ink)" : "1px solid var(--border-strong)",
-    background: primary ? "var(--ink)" : "transparent",
-    color: primary ? "var(--bg)" : "var(--ink)",
+    border: "1px solid var(--border-strong)",
+    background: "transparent",
+    color: "var(--ink)",
     opacity: disabled ? 0.55 : 1,
   };
 }

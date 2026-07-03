@@ -1,4 +1,9 @@
 {
+  "boundary": {
+    "title": "Algo salió mal",
+    "body": "La aplicación encontró un error inesperado. Tus datos están a salvo — inténtalo de nuevo o recarga la página si persiste.",
+    "retry": "Reintentar"
+  },
   "common": {
     "languageSwitch": {
       "label": "Idioma",

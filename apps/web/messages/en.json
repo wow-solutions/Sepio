@@ -1,4 +1,9 @@
 {
+  "boundary": {
+    "title": "Something went wrong",
+    "body": "The app hit an unexpected error. Your data is safe — try again, or reload the page if it keeps happening.",
+    "retry": "Try again"
+  },
   "common": {
     "languageSwitch": {
       "label": "Language",
@@ -292,7 +297,12 @@
   "writer": {
     "breadcrumb": "Writer",
     "networkError": "Network error",
-    "generating": "Generating draft… ~5s",
+    "generating": "Writing your draft…",
+    "generatingHint": "Long articles can take a minute or two",
+    "generatingStop": "Stop waiting",
+    "serverError": "Something went wrong on our side — please try again.",
+    "publishFailed": "Publishing failed — please try again.",
+    "publishBanner": {"title": "Published", "dismiss": "Hide"},
     "regenerate": "Regenerate",
     "generate": "Generate",
     "brandContext": "Brand context",

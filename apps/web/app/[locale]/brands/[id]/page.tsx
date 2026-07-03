@@ -1,6 +1,5 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { notFound, redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { Link } from "@/i18n/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/app-shell";
@@ -61,9 +60,7 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
     .eq("platform", "wordpress")
     .maybeSingle();
 
-  // Site detection fields (new columns; database.types.ts not regenerated yet).
-  // TODO: regen types, drop the cast.
-  const { data: siteRow } = await (supabase as unknown as SupabaseClient)
+  const { data: siteRow } = await supabase
     .from("brands")
     .select("website_url, detected_platform, detected_confidence, detected_at, platform_override")
     .eq("id", brandId)
@@ -85,8 +82,8 @@ export default async function BrandDetailPage({ params, searchParams }: PageProp
   const showWordPress =
     !!wpToken || effectivePlatform === "wordpress" || !effectivePlatform;
 
-  // Client blog domain mapping (owner reads via RLS). Not in database.types yet.
-  const { data: blogDomainRow } = await (supabase as unknown as SupabaseClient)
+  // Client blog domain mapping (owner reads via RLS).
+  const { data: blogDomainRow } = await supabase
     .from("brand_blog_domains")
     .select("domain, status, cname_target")
     .eq("brand_id", brandId)

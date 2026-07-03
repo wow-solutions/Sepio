@@ -6,6 +6,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { BrandDot } from "@/components/brand/brand-dot";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { brandColor } from "@/lib/brand-color";
+import { primaryPill } from "@/components/ui/button-styles";
 
 type PageProps = {
   searchParams: Promise<{ brand?: string }>;
@@ -28,25 +29,33 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     .eq("id", user.id)
     .single();
 
-  const [{ data: brands }, { data: allConfigs }, { data: allPosts }] =
-    await Promise.all([
-      supabase
-        .from("brands")
-        .select("id, name, slug, industry, primary_language, created_at")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false }),
-      supabase.from("brand_configs").select("brand_id, tone_attributes"),
-      supabase.from("posts").select("brand_id"),
-    ]);
+  const [{ data: brands }, { data: allConfigs }] = await Promise.all([
+    supabase
+      .from("brands")
+      .select("id, name, slug, industry, primary_language, created_at")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    supabase.from("brand_configs").select("brand_id, tone_attributes"),
+  ]);
 
   const list = brands ?? [];
   const configsList = allConfigs ?? [];
-  const postsList = allPosts ?? [];
 
+  // Per-brand head counts instead of pulling every posts row: the row fetch grew
+  // unbounded with usage and was silently capped at the PostgREST max-rows limit
+  // anyway. Brands per account are ~15 max, so N tiny count queries stay cheap.
+  // A failed count logs and renders 0 — never takes down the dashboard.
   const postCounts: Record<string, number> = {};
-  for (const p of postsList) {
-    postCounts[p.brand_id] = (postCounts[p.brand_id] ?? 0) + 1;
-  }
+  await Promise.all(
+    list.map(async (b) => {
+      const { count, error } = await supabase
+        .from("posts")
+        .select("id", { count: "exact", head: true })
+        .eq("brand_id", b.id);
+      if (error) console.error("posts count failed:", error.message);
+      postCounts[b.id] = count ?? 0;
+    }),
+  );
 
   const switcherBrands: BrandOption[] = list.map((b) => {
     const cfg = configsList.find((c) => c.brand_id === b.id);
@@ -432,21 +441,7 @@ function EmptyState({ title, body, cta }: { title: string; body: string; cta: st
       >
         {body}
       </p>
-      <Link
-        href="/brands/new"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          height: 36,
-          padding: "0 16px",
-          background: "var(--ink)",
-          color: "var(--bg)",
-          border: "1px solid var(--ink)",
-          borderRadius: 6,
-          fontSize: 14,
-          fontWeight: 500,
-        }}
-      >
+      <Link href="/brands/new" style={primaryPill({ height: 36 })}>
         {cta}
       </Link>
     </div>

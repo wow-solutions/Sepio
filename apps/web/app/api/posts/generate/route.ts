@@ -11,7 +11,6 @@ import {
 import { parseBlogArticleOutput } from "@/lib/_private/blog-article";
 import { resolveBlogLanguages } from "@/lib/blog-languages";
 import { slugify } from "@/lib/slug";
-import { clientBrainContextBlocks } from "@/lib/client-brain/client-brain-context";
 import { ANGLE_IDS, ANGLES_USING_ARTICLE } from "@/lib/angles-shared";
 import type {
   Json,
@@ -24,17 +23,8 @@ import {
   deriveSourceUrl,
   type ArticleExtract,
 } from "@/lib/_private/article-fetch";
-import { differentiationContextBlocks } from "@/lib/market-brain/differentiation-context";
-import {
-  mergeRuleWords,
-  renderVoiceNoteBlocks,
-} from "@/lib/brand-rules/rules-context";
-import {
-  checkText,
-  deriveDetectionScore,
-  PangramError,
-  type PangramResponse,
-} from "@/lib/pangram";
+import { assembleMoatContext } from "@/lib/moat-context";
+import { tryDetection } from "@/lib/pangram";
 
 // POST /api/posts/generate
 //
@@ -44,7 +34,8 @@ import {
 //   3. Fetch brand + brand_configs (RLS enforces ownership)
 //   4. If topic_candidate_id: fetch candidate (RLS-verified), use topic_text as hint
 //   5. Claude generates draft
-//   6. Pangram check on draft — CQ-2: on fail, return 503, do NOT save
+//   6. Pangram check on draft — best-effort (ADR-0018): a failure logs and
+//      degrades to a null score/breakdown, it NEVER blocks saving the paid draft
 //   7. Insert post:
 //        - If topic_candidate_id: insert_post_and_mark_candidate RPC (atomic D12)
 //        - Else: direct insert (existing flow, backwards compat)
@@ -230,72 +221,68 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
+  // Three independent context reads, run concurrently (they only share brand_id).
+  // Per-read error discipline is unchanged: log and skip — never hide the
+  // breakage, never block generation over it either.
+  //
   // Market Brain (T8): inject the brand's competitive differentiation into the
   // generation prompt via the T4 seam. Read the single derived-only row (RLS
-  // owner read). On DB error: log and skip — never hide the breakage (a silent
-  // catch would make Market Brain look inactive), but never block generation
-  // over it either. Absent row / low-confidence (both arrays empty) → [] → skip.
-  const { data: diffRow, error: diffErr } = await supabase
-    .from("market_differentiation")
-    .select("common_themes, positioning_gaps")
-    .eq("brand_id", brand_id)
-    .maybeSingle();
+  // owner read). Absent row / low-confidence (both arrays empty) → [] → skip.
+  //
+  // Editorial Memory (T6): inject the brand's learned rules via the same T4 seam.
+  // Read active rules once, sorted by (created_at, id) for byte-stable prompt
+  // assembly (cache invariant, Codex #4-7). Word-type rules (forbidden_word/
+  // required_phrase) MERGE into the config columns so buildBrandContext emits ONE
+  // deduped "Never use"/"Weave in" section (3b) — with no rules + clean config the
+  // merge is a no-op, so a brand not using the feature keeps an identical
+  // (cache-warm) prompt. voice_note rules have no column, so they inject as their
+  // own scope-grouped blocks.
+  //
+  // Client Brain (site-grounded facts): the brand's services/locations/pricing
+  // live on brand_configs (already in `config`); proof_items is a separate table.
+  // Empty facts → block renders "" → nothing injected (cache-warm), so a brand
+  // that never studied its site is unaffected.
+  const [
+    { data: diffRow, error: diffErr },
+    { data: ruleRows, error: rulesErr },
+    { data: proofRows, error: proofErr },
+  ] = await Promise.all([
+    supabase
+      .from("market_differentiation")
+      .select("common_themes, positioning_gaps")
+      .eq("brand_id", brand_id)
+      .maybeSingle(),
+    supabase
+      .from("brand_rules")
+      .select("rule_type, scope, rule_text")
+      .eq("brand_id", brand_id)
+      .eq("active", true)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
+    supabase
+      .from("proof_items")
+      .select("kind, body, source, verifiable")
+      .eq("brand_id", brand_id)
+      // Stable order — the block is a prompt-cache key; unordered rows churn it.
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true }),
+  ]);
   if (diffErr) {
     console.error("market_differentiation read failed:", diffErr.message);
   }
-  // Editorial Memory (T6): inject the brand's learned rules via the same T4 seam.
-  // Read active rules once, sorted by (created_at, id) for byte-stable prompt
-  // assembly (cache invariant, Codex #4-7). DB error → log + skip (never block
-  // generation). Word-type rules (forbidden_word/required_phrase) MERGE into the
-  // config columns so buildBrandContext emits ONE deduped "Never use"/"Weave in"
-  // section (3b) — with no rules + clean config the merge is a no-op, so a brand
-  // not using the feature keeps an identical (cache-warm) prompt. voice_note rules
-  // have no column, so they inject as their own scope-grouped blocks.
-  const { data: ruleRows, error: rulesErr } = await supabase
-    .from("brand_rules")
-    .select("rule_type, scope, rule_text")
-    .eq("brand_id", brand_id)
-    .eq("active", true)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true });
   if (rulesErr) {
     console.error("brand_rules read failed:", rulesErr.message);
   }
-  const rules = rulesErr ? [] : (ruleRows ?? []);
-  const mergedWords = mergeRuleWords(
-    rules,
-    config.forbidden_words ?? [],
-    config.required_phrases ?? [],
-  );
-  const configForGen = {
-    ...config,
-    forbidden_words: mergedWords.forbidden,
-    required_phrases: mergedWords.required,
-  };
-
-  // Client Brain (site-grounded facts): the brand's services/locations/pricing
-  // live on brand_configs (already in `config`); proof_items is a separate table.
-  // Read it owner-scoped; on error log + skip (never block generation) — same
-  // discipline as the Market Brain read. Empty facts → block renders "" → nothing
-  // injected (cache-warm), so a brand that never studied its site is unaffected.
-  const { data: proofRows, error: proofErr } = await supabase
-    .from("proof_items")
-    .select("kind, body, source, verifiable")
-    .eq("brand_id", brand_id);
   if (proofErr) {
     console.error("proof_items read failed:", proofErr.message);
   }
-
-  const extraContext = [
-    ...differentiationContextBlocks(diffErr ? null : diffRow),
-    ...clientBrainContextBlocks({
-      services: config.services,
-      locations: config.locations,
-      pricing: config.pricing,
-      proofItems: proofErr ? [] : (proofRows ?? []),
-    }),
-    ...renderVoiceNoteBlocks(rules),
-  ];
+  const rules = rulesErr ? [] : (ruleRows ?? []);
+  const { configForGen, extraContext } = assembleMoatContext({
+    config,
+    diffRow: diffErr ? null : diffRow,
+    rules,
+    proofRows: proofErr ? [] : (proofRows ?? []),
+  });
 
   // ── Blog article branch (kitchen slice 1) ─────────────────────────────────
   // Same engine, brand voice, and moat (Market Brain + Editorial Memory via
@@ -449,7 +436,7 @@ export async function POST(request: Request): Promise<Response> {
       };
       const { data: post, error: postErr } = await supabase
         .from("posts")
-        .insert(insertRow as unknown as TablesInsert<"posts">)
+        .insert(insertRow)
         .select("id")
         .single();
       if (postErr || !post) {
@@ -580,16 +567,10 @@ export async function POST(request: Request): Promise<Response> {
     return generationErrorResponse(err);
   }
 
-  let pangram: PangramResponse;
-  try {
-    pangram = await checkText(claude.text);
-  } catch (err) {
-    const msg = err instanceof PangramError ? err.message : "Detection failed";
-    // CQ-2: 503 + no save. Caller shows retry toast.
-    return jsonError({ error: msg, stage: "detection" }, 503);
-  }
-
-  const detectionScore = deriveDetectionScore(pangram);
+  // Detection is best-effort (ADR-0018): it is no longer a product promise, so a
+  // Pangram failure must not throw away the already-generated (paid) draft.
+  // tryDetection swallows any error into a null score/breakdown and we save anyway.
+  const { score: detectionScore, breakdown } = await tryDetection(claude.text);
   const initialStatus =
     config.approval_mode === "auto" ? "draft" : "pending_approval";
   // source_type 'auto_research' когда post came из topic_candidate (cron pool);
@@ -605,20 +586,24 @@ export async function POST(request: Request): Promise<Response> {
   // - Without candidate: direct insert (existing flow, backwards-compat).
   let postId: string;
   if (topic_candidate_id) {
+    // detection_score/breakdown are null on a best-effort detection miss; the
+    // generated RPC Args type declares them non-nullable, so cast the whole args
+    // object (same idiom as the blog branch above).
+    const rpcArgs = {
+      p_brand_id: brand_id,
+      p_platform: "linkedin",
+      p_language: brand.primary_language,
+      p_content_text: claude.text,
+      p_detection_score: detectionScore,
+      p_detection_breakdown: breakdown,
+      p_status: initialStatus,
+      p_source_type: sourceType,
+      p_candidate_id: topic_candidate_id,
+      p_research_topic: resolvedCandidateText ?? undefined,
+    };
     const { data: rpcPost, error: rpcErr } = await supabase.rpc(
       "insert_post_and_mark_candidate",
-      {
-        p_brand_id: brand_id,
-        p_platform: "linkedin",
-        p_language: brand.primary_language,
-        p_content_text: claude.text,
-        p_detection_score: detectionScore,
-        p_detection_breakdown: pangram,
-        p_status: initialStatus,
-        p_source_type: sourceType,
-        p_candidate_id: topic_candidate_id,
-        p_research_topic: resolvedCandidateText ?? undefined,
-      },
+      rpcArgs as unknown as Database["public"]["Functions"]["insert_post_and_mark_candidate"]["Args"],
     );
 
     if (rpcErr || !rpcPost) {
@@ -651,7 +636,7 @@ export async function POST(request: Request): Promise<Response> {
         language: brand.primary_language,
         content_text: claude.text,
         detection_score: detectionScore,
-        detection_breakdown: pangram,
+        detection_breakdown: breakdown,
         status: initialStatus,
         source_type: sourceType,
       })
@@ -670,22 +655,29 @@ export async function POST(request: Request): Promise<Response> {
   // Dataset insert via service-role. Non-fatal: a failed dataset write — or
   // missing SUPABASE_SERVICE_ROLE_KEY env — must not break the user-visible
   // flow. Sentry will pick this up once wired.
-  try {
-    const service = createServiceRoleClient();
-    const { error: dsErr } = await service.from("detection_dataset").insert({
-      account_id: brand.account_id,
-      post_id: postId,
-      text: claude.text,
-      score: detectionScore,
-      source: "generated",
-      pangram_breakdown: pangram,
-    });
-    if (dsErr) {
-      console.error("detection_dataset insert failed:", dsErr.message);
+  //
+  // Skip entirely when detection was best-effort-skipped (breakdown === null):
+  // a null-score row carries no training signal, so writing it is just noise.
+  if (breakdown !== null) {
+    try {
+      const service = createServiceRoleClient();
+      const { error: dsErr } = await service.from("detection_dataset").insert({
+        account_id: brand.account_id,
+        post_id: postId,
+        text: claude.text,
+        // breakdown !== null here guarantees a real score (set together in
+        // tryDetection); the column is non-nullable, so assert past the split-var.
+        score: detectionScore!,
+        source: "generated",
+        pangram_breakdown: breakdown,
+      });
+      if (dsErr) {
+        console.error("detection_dataset insert failed:", dsErr.message);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("service-role unavailable, skipping dataset write:", msg);
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("service-role unavailable, skipping dataset write:", msg);
   }
 
   // Grounding honesty: `grounded` = the draft was written against a real source
@@ -697,7 +689,7 @@ export async function POST(request: Request): Promise<Response> {
     post_id: postId,
     content: claude.text,
     detection_score: detectionScore,
-    detection_breakdown: pangram,
+    detection_breakdown: breakdown,
     status: initialStatus,
     cache_read_tokens: claude.usage.cache_read_input_tokens,
     grounded: resolvedArticle !== null,

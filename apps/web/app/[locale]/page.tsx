@@ -286,17 +286,18 @@ export default async function HomePage({
                   <div className="post-title">{C.demo.postTitle}</div>
                   <div className="post-meta">{C.demo.postMeta}</div>
                 </div>
-                <div className="editor-toolbar">
-                  <button>H1</button>
-                  <button>H2</button>
+                {/* Illustrative only — hidden from AT and the tab order. */}
+                <div className="editor-toolbar" aria-hidden>
+                  <button tabIndex={-1}>H1</button>
+                  <button tabIndex={-1}>H2</button>
                   <div className="div" />
-                  <button>B</button>
-                  <button style={{ fontStyle: "italic" }}>I</button>
-                  <button>U</button>
+                  <button tabIndex={-1}>B</button>
+                  <button tabIndex={-1} style={{ fontStyle: "italic" }}>I</button>
+                  <button tabIndex={-1}>U</button>
                   <div className="div" />
-                  <button>“ ”</button>
-                  <button>—</button>
-                  <button>‹›</button>
+                  <button tabIndex={-1}>“ ”</button>
+                  <button tabIndex={-1}>—</button>
+                  <button tabIndex={-1}>‹›</button>
                 </div>
                 <div className="editor">
                   <p>{C.demo.editor[0]}</p>
@@ -310,10 +311,10 @@ export default async function HomePage({
 
               <aside className="demo-aside">
                 <div className="ah">{C.demo.previewLabel}</div>
-                <div className="preview-tabs">
-                  <button className="active">LinkedIn</button>
-                  <button>Telegram</button>
-                  <button>Threads</button>
+                <div className="preview-tabs" aria-hidden>
+                  <button tabIndex={-1} className="active">LinkedIn</button>
+                  <button tabIndex={-1}>Telegram</button>
+                  <button tabIndex={-1}>Threads</button>
                 </div>
                 <div className="preview-card">
                   <div className="pc-head">
@@ -495,13 +496,21 @@ export default async function HomePage({
               </div>
               <p>{C.footer.desc}</p>
             </div>
-            {C.footer.cols.map((col, ci) => (
-              <div className="footer-col" key={col.title}>
-                <h5>{col.title}</h5>
-                <ul>
-                  {col.links.map((label, li) => {
-                    const href = footerHrefs[ci][li];
-                    return (
+            {C.footer.cols.map((col, ci) => {
+              // Pages that don't exist yet don't get "#" stub links — the row
+              // (or the whole column) simply doesn't render until it's real.
+              const live = col.links
+                .map((label, li) => ({ label, href: footerHrefs[ci]?.[li] }))
+                .filter(
+                  (l): l is { label: string; href: string } =>
+                    !!l.href && l.href !== "#",
+                );
+              if (live.length === 0) return null;
+              return (
+                <div className="footer-col" key={col.title}>
+                  <h5>{col.title}</h5>
+                  <ul>
+                    {live.map(({ label, href }) => (
                       <li key={label}>
                         {href.startsWith("/") ? (
                           <Link href={href as Route}>{label}</Link>
@@ -509,11 +518,11 @@ export default async function HomePage({
                           <a href={href}>{label}</a>
                         )}
                       </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
           <div className="footer-legal">
             <span>© 2026 Sepio · <a href="https://sepio.app">sepio.app</a> · operated by WOW SOLUCIONES (Panamá)</span>

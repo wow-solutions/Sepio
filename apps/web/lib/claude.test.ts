@@ -1,6 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import Anthropic from "@anthropic-ai/sdk";
 import {
   buildBrandContext,
+  buildGenerateResult,
   ClaudeError,
   generatePost,
   generateBlogArticle,
@@ -272,5 +274,67 @@ describe("generateBlogArticle — guards", () => {
     await expect(
       generateBlogArticle(fixtureConfig(), "en", "a real brief about HVAC humidity"),
     ).rejects.toThrow(/ANTHROPIC_API_KEY/);
+  });
+});
+
+// Fixture Anthropic.Message. Only the fields buildGenerateResult reads are
+// meaningful; the rest are cast through `unknown` so the fixture doesn't have
+// to track every field of the SDK's response shape.
+function fixtureMessage(overrides: {
+  content?: Anthropic.ContentBlock[];
+  stop_reason?: Anthropic.Message["stop_reason"];
+  usage?: Partial<Anthropic.Usage>;
+}): Anthropic.Message {
+  return {
+    id: "msg_test",
+    container: null,
+    model: "claude-sonnet-4-6",
+    role: "assistant",
+    stop_details: null,
+    stop_sequence: null,
+    type: "message",
+    content: overrides.content ?? [{ type: "text", text: "hello", citations: [] }],
+    stop_reason: overrides.stop_reason ?? "end_turn",
+    usage: {
+      input_tokens: 10,
+      output_tokens: 20,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation: null,
+      inference_geo: null,
+      server_tool_use: null,
+      service_tier: null,
+      ...overrides.usage,
+    },
+  } as unknown as Anthropic.Message;
+}
+
+describe("buildGenerateResult", () => {
+  test("stop_reason max_tokens -> truncated: true", () => {
+    const result = buildGenerateResult(fixtureMessage({ stop_reason: "max_tokens" }));
+    expect(result.truncated).toBe(true);
+  });
+
+  test("stop_reason end_turn -> truncated: false", () => {
+    const result = buildGenerateResult(fixtureMessage({ stop_reason: "end_turn" }));
+    expect(result.truncated).toBe(false);
+  });
+
+  test("empty content -> throws ClaudeError", () => {
+    expect(() => buildGenerateResult(fixtureMessage({ content: [] }))).toThrow(
+      ClaudeError,
+    );
+  });
+
+  test("multiple text blocks are joined with newlines", () => {
+    const result = buildGenerateResult(
+      fixtureMessage({
+        content: [
+          { type: "text", text: "first block", citations: [] },
+          { type: "text", text: "second block", citations: [] },
+        ],
+      }),
+    );
+    expect(result.text).toBe("first block\nsecond block");
   });
 });
