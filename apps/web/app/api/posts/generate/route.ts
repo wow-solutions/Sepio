@@ -254,7 +254,9 @@ export async function POST(request: Request): Promise<Response> {
       .maybeSingle(),
     supabase
       .from("brand_rules")
-      .select("rule_type, scope, rule_text")
+      // id/human_label feed the W2 applied-rules receipt; the sort order stays
+      // (created_at, id) — a byte-stable prompt-assembly invariant (cache).
+      .select("id, rule_type, scope, rule_text, human_label")
       .eq("brand_id", brand_id)
       .eq("active", true)
       .order("created_at", { ascending: true })
@@ -277,12 +279,19 @@ export async function POST(request: Request): Promise<Response> {
     console.error("proof_items read failed:", proofErr.message);
   }
   const rules = rulesErr ? [] : (ruleRows ?? []);
-  const { configForGen, extraContext } = assembleMoatContext({
+  const { configForGen, extraContext, appliedRules } = assembleMoatContext({
     config,
     diffRow: diffErr ? null : diffRow,
     rules,
     proofRows: proofErr ? [] : (proofRows ?? []),
   });
+  // W2 receipt snapshot, persisted on every saved post. null ≠ []: a rules READ
+  // ERROR means "not tracked" (null — the UI shows no receipt), while a clean
+  // read with zero rules is an honest [] (the UI shows the "teach Sepio" CTA).
+  const appliedRulesSnapshot: typeof appliedRules | null = rulesErr
+    ? null
+    : appliedRules;
+  const appliedRulesJson = appliedRulesSnapshot as unknown as Json;
 
   // ── Blog article branch (kitchen slice 1) ─────────────────────────────────
   // Same engine, brand voice, and moat (Market Brain + Editorial Memory via
@@ -408,6 +417,7 @@ export async function POST(request: Request): Promise<Response> {
           p_slug: sharedSlug ?? undefined,
           p_excerpt: variant.excerpt ?? undefined,
           p_content_markdown: variant.body,
+          p_applied_rules: appliedRulesJson,
         };
         const { data: rpcPost, error: rpcErr } = await supabase.rpc(
           "insert_post_and_mark_candidate",
@@ -433,6 +443,7 @@ export async function POST(request: Request): Promise<Response> {
         excerpt: variant.excerpt,
         status: initialStatus,
         source_type: sourceType,
+        applied_rules: appliedRulesJson,
       };
       const { data: post, error: postErr } = await supabase
         .from("posts")
@@ -478,6 +489,7 @@ export async function POST(request: Request): Promise<Response> {
       cache_read_tokens: primaryVariant.cacheReadTokens,
       grounded: false,
       source: null,
+      applied_rules: appliedRulesSnapshot,
     });
   }
 
@@ -600,6 +612,7 @@ export async function POST(request: Request): Promise<Response> {
       p_source_type: sourceType,
       p_candidate_id: topic_candidate_id,
       p_research_topic: resolvedCandidateText ?? undefined,
+      p_applied_rules: appliedRulesJson,
     };
     const { data: rpcPost, error: rpcErr } = await supabase.rpc(
       "insert_post_and_mark_candidate",
@@ -639,6 +652,7 @@ export async function POST(request: Request): Promise<Response> {
         detection_breakdown: breakdown,
         status: initialStatus,
         source_type: sourceType,
+        applied_rules: appliedRulesJson,
       })
       .select("id")
       .single();
@@ -696,5 +710,6 @@ export async function POST(request: Request): Promise<Response> {
     source: sourceUrl
       ? { url: sourceUrl, title: resolvedArticle?.title ?? null }
       : null,
+    applied_rules: appliedRulesSnapshot,
   });
 }

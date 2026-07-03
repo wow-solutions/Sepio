@@ -302,7 +302,10 @@
     "generatingStop": "Stop waiting",
     "serverError": "Something went wrong on our side — please try again.",
     "publishFailed": "Publishing failed — please try again.",
-    "publishBanner": {"title": "Published", "dismiss": "Hide"},
+    "publishBanner": {
+      "title": "Published",
+      "dismiss": "Hide"
+    },
     "regenerate": "Regenerate",
     "generate": "Generate",
     "brandContext": "Brand context",
@@ -445,7 +448,24 @@
     "previewEmpty": "Write something — and watch it appear here, shaped for the feed.",
     "previewSoon": "soon",
     "previewCollapse": "Hide preview",
-    "previewExpand": "Show preview"
+    "previewExpand": "Show preview",
+    "receipt": {
+      "applied": "Sepio applied {count, plural, one {# rule} other {# rules}} to this draft",
+      "show": "Show",
+      "hide": "Hide",
+      "empty": "No saved rules were applied to this draft.",
+      "teachCta": "Teach Sepio",
+      "type": {
+        "forbidden_word": "Never use",
+        "required_phrase": "Always include",
+        "voice_note": "Voice rule"
+      },
+      "scope": {
+        "opening": "Opening",
+        "body": "Body",
+        "global": "Whole post"
+      }
+    }
   },
   "posts": {
     "breadcrumb": "Posts",
@@ -533,15 +553,10 @@
         "current": "Current",
         "rewritten": "Rewritten",
         "proposedRule": "Proposed brand rule",
-        "remember": "Remember this rule for the brand",
         "rememberSub": "Applies to all future posts · saves a permanent brand rule",
         "apply": "Apply",
         "applying": "Applying…",
         "saveRule": "Save rule",
-        "confirmOffPre": "“Apply” will update ",
-        "confirmOffOut": "only this post.",
-        "confirmOnPre": "“Apply” will update this post and ",
-        "confirmOnOut": "save a permanent brand rule.",
         "riskTag": "RISK",
         "riskBroad": "May be too broad — review before saving.",
         "noRewrite": "No rewrite needed.",
@@ -576,7 +591,17 @@
           "extract": "Couldn’t read that — try rephrasing the instruction.",
           "published": "This post is published — refresh and start over.",
           "generic": "Something went wrong — try again."
-        }
+        },
+        "knowsRules": "Sepio knows {count, plural, one {# rule} other {# rules}}",
+        "applyRemember": "Apply & remember rule",
+        "applyOnly": "Apply edit only",
+        "factSaveNudge": "Save fact",
+        "factSave": "Save fact",
+        "factSaving": "Saving…",
+        "factSaved": "Fact saved — it will ground the next generation.",
+        "factRowToggle": "+ Add a business fact",
+        "factRowPlaceholder": "e.g. We service 3 marinas in Panama City…",
+        "factCancel": "Cancel"
       }
     },
     "brandAll": "All brands"

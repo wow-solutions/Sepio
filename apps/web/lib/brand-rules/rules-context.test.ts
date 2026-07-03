@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mergeRuleWords, renderVoiceNoteBlocks } from "./rules-context";
+import {
+  filterRenderableRules,
+  mergeRuleWords,
+  renderVoiceNoteBlocks,
+} from "./rules-context";
 
 const r = (
   rule_type: string,
@@ -107,5 +111,24 @@ describe("renderVoiceNoteBlocks — scope grouping + order", () => {
   test("same input → byte-identical output across calls (cache invariant)", () => {
     const input = [r("voice_note", "a", "opening"), r("voice_note", "b", "body")];
     expect(renderVoiceNoteBlocks(input)).toEqual(renderVoiceNoteBlocks(input));
+  });
+});
+
+describe("filterRenderableRules — the W2 receipt's validity gate", () => {
+  test("keeps the ORIGINAL row objects (extra columns survive)", () => {
+    const row = { ...r("voice_note", "keep me"), id: "r-1", human_label: "Keep" };
+    expect(filterRenderableRules([row])).toEqual([row]);
+  });
+
+  test("drops exactly what the renderers drop", () => {
+    const bad = r("forbidden_word", "synergy", "opening"); // violates the refine
+    const empty = r("voice_note", "   "); // blank text
+    const ok = r("voice_note", "fine");
+    expect(filterRenderableRules([bad, empty, ok])).toEqual([ok]);
+  });
+
+  test("null/undefined → []", () => {
+    expect(filterRenderableRules(null)).toEqual([]);
+    expect(filterRenderableRules(undefined)).toEqual([]);
   });
 });

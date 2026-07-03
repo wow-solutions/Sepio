@@ -38,6 +38,18 @@ function validate(rules: BrandRuleInput[] | null | undefined): RenderableRule[] 
   return out;
 }
 
+// The renderable SUBSET of raw rows, keeping the original row objects (extra
+// columns like id/human_label survive). Single source of truth for "which rules
+// actually reach the prompt": the W2 applied-rules receipt filters through THIS,
+// so it can never count a malformed row that validate() above would drop.
+export function filterRenderableRules<T extends BrandRuleInput>(
+  rules: T[] | null | undefined,
+): T[] {
+  return (rules ?? []).filter(
+    (row) => RenderableRuleSchema.safeParse(row).success,
+  );
+}
+
 function dedupMerge(...lists: string[][]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];

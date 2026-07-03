@@ -20,6 +20,7 @@ import { useTranslations } from "next-intl";
 import { useKitchen } from "@/components/shell/kitchen-context";
 import { CHANNEL_LABEL } from "@/lib/kitchen/channel-formats";
 import { EditorialPanel } from "@/app/[locale]/posts/[id]/editorial-panel";
+import { MemoryReceipt, focusEditorialPanel } from "./memory-receipt";
 import { GenerationProgress } from "./generation-progress";
 import { primaryPill } from "@/components/ui/button-styles";
 import { saveDraft } from "../actions";
@@ -34,11 +35,17 @@ export function KitchenCenter({
   onModeChange,
   betaAccess = false,
   sourceTitle,
+  ruleCount = null,
+  onRuleCount,
 }: {
   mode: ViewMode;
   onModeChange: (m: ViewMode) => void;
   betaAccess?: boolean;
   sourceTitle?: string;
+  // "Sepio knows N rules" badge state — owned by the writer (shared with the
+  // blog editor's panel), refreshed via onRuleCount after a rule save (W2).
+  ruleCount?: number | null;
+  onRuleCount?: (n: number) => void;
 }) {
   const t = useTranslations("writer");
   const {
@@ -279,12 +286,21 @@ export function KitchenCenter({
             !variant.error &&
             body.trim() &&
             source && (
+              <>
+              {/* W2 memory receipt for THIS variant — persisted snapshot from
+                  the fan-out ([] = teach-CTA focusing the panel below). */}
+              <MemoryReceipt
+                applied={variant.appliedRules}
+                onTeach={focusEditorialPanel}
+              />
               <EditorialPanel
                 postId={variant.postId}
                 brandId={source.brandId}
                 currentContent={draft}
                 disabled={dirty || pending}
                 disabledHint={t("editorialDirtyHint")}
+                ruleCount={ruleCount}
+                onRuleCount={onRuleCount}
                 onApplied={(newBody) => {
                   // Update the variant body in context (NOT this center's draft
                   // directly): if we're still on this channel the `[body, active]`
@@ -293,6 +309,7 @@ export function KitchenCenter({
                   updateVariantBody(active, newBody);
                 }}
               />
+              </>
             )}
         </div>
       </div>

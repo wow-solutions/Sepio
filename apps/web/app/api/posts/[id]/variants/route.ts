@@ -19,6 +19,7 @@ import {
 } from "@/lib/kitchen/channel-formats";
 import { getPostBody, bodyUpdateForPlatform } from "@/lib/post-body";
 import { assembleMoatContext } from "@/lib/moat-context";
+import type { Json } from "@/lib/supabase/database.types";
 
 export const maxDuration = 60; // a single LLM call (short-form), but Sonnet headroom.
 
@@ -85,6 +86,9 @@ type ChildPostRow = ChildVariant & {
   id: string;
   content_text: string | null;
   content_markdown: string | null;
+  // W2 receipt snapshot persisted at generation (jsonb; null = not tracked).
+  // Fast-paths return the PERSISTED value so a cached variant keeps its receipt.
+  applied_rules: unknown;
 };
 
 export async function POST(
@@ -214,7 +218,7 @@ export async function POST(
   const { data: childRaw } = await db
     .from("posts")
     .select(
-      "id, content_text, content_markdown, variant_state, generated_from_source_version",
+      "id, content_text, content_markdown, variant_state, generated_from_source_version, applied_rules",
     )
     .eq("content_group_id", groupId)
     .eq("platform", platform)
@@ -231,6 +235,7 @@ export async function POST(
       generated_from_source_version: existingChild.generated_from_source_version,
       content_text: existingChild.content_text,
       content_markdown: existingChild.content_markdown,
+      applied_rules: existingChild.applied_rules ?? null,
     });
   }
 
@@ -249,7 +254,9 @@ export async function POST(
       .maybeSingle(),
     supabase
       .from("brand_rules")
-      .select("rule_type, scope, rule_text")
+      // id/human_label feed the W2 applied-rules receipt; the sort order stays
+      // (created_at, id) — a byte-stable prompt-assembly invariant (cache).
+      .select("id, rule_type, scope, rule_text, human_label")
       .eq("brand_id", source.brand_id)
       .eq("active", true)
       .order("created_at", { ascending: true })
@@ -282,12 +289,16 @@ export async function POST(
   }
 
   const rules = rulesErr ? [] : (ruleRows ?? []);
-  const { configForGen, extraContext } = assembleMoatContext({
+  const { configForGen, extraContext, appliedRules } = assembleMoatContext({
     config,
     diffRow: diffErr ? null : diffRow,
     rules,
     proofRows: proofErr ? [] : (proofRows ?? []),
   });
+  // W2 receipt snapshot. null ≠ []: a rules read error persists null ("not
+  // tracked" — no receipt), a clean zero-rule read persists [] (honest CTA).
+  const appliedRulesSnapshot = rulesErr ? null : appliedRules;
+  const appliedRulesJson = appliedRulesSnapshot as unknown as Json;
 
   let generated;
   try {
@@ -319,12 +330,16 @@ export async function POST(
   const bodyPatch = bodyUpdateForPlatform(platform, generated.text);
   let childId: string;
   if (existingChild) {
+    // Regenerate-in-place: the receipt snapshot must move WITH the new text —
+    // otherwise the body reflects this generation while the receipt still
+    // describes the previous one (Codex).
     const { error: updErr } = await db
       .from("posts")
       .update({
         ...bodyPatch,
         variant_state: "synced",
         generated_from_source_version: groupVersion,
+        applied_rules: appliedRulesJson,
       })
       .eq("id", existingChild.id);
     if (updErr) return jsonError(updErr.message, 500);
@@ -342,6 +357,7 @@ export async function POST(
         generated_from_source_version: groupVersion,
         status: "draft",
         source_type: "manual",
+        applied_rules: appliedRulesJson,
         ...bodyPatch,
       })
       .select("id")
@@ -356,7 +372,7 @@ export async function POST(
         const { data: raceRaw } = await db
           .from("posts")
           .select(
-            "id, content_text, content_markdown, variant_state, generated_from_source_version",
+            "id, content_text, content_markdown, variant_state, generated_from_source_version, applied_rules",
           )
           .eq("content_group_id", groupId)
           .eq("platform", platform)
@@ -372,6 +388,7 @@ export async function POST(
             generated_from_source_version: raced.generated_from_source_version,
             content_text: raced.content_text,
             content_markdown: raced.content_markdown,
+            applied_rules: raced.applied_rules ?? null,
           });
         }
       }
@@ -389,5 +406,6 @@ export async function POST(
     generated_from_source_version: groupVersion,
     content_text: bodyPatch.content_text ?? null,
     content_markdown: bodyPatch.content_markdown ?? null,
+    applied_rules: appliedRulesSnapshot,
   });
 }

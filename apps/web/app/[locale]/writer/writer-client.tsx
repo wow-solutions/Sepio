@@ -15,6 +15,11 @@ import { GenerationProgress } from "./_components/generation-progress";
 import { primaryPill } from "@/components/ui/button-styles";
 import { AngleDropdown, AngleExpansion } from "./_components/angle-dropdown";
 import { EditorialPanel } from "../posts/[id]/editorial-panel";
+import {
+  MemoryReceipt,
+  focusEditorialPanel,
+} from "./_components/memory-receipt";
+import type { AppliedRule } from "@/lib/applied-rules";
 import { useKitchen } from "@/components/shell/kitchen-context";
 import { KitchenCenter, SegToggle, type ViewMode } from "./_components/kitchen-preview";
 import {
@@ -50,6 +55,9 @@ type GenerateResponse = {
   platform?: string;
   title?: string | null;
   excerpt?: string | null;
+  // W2 receipt snapshot. Optional (an older server build omits it); null =
+  // rules weren't tracked for this generation → no receipt.
+  applied_rules?: AppliedRule[] | null;
 };
 
 // Output format chosen in the channel selector — drives the next generation.
@@ -97,6 +105,8 @@ export type InitialPost = {
   excerpt: string;
   body: string;
   externalUrl: string | null;
+  // W2 receipt snapshot persisted on the post (null = not tracked → no receipt).
+  appliedRules: AppliedRule[] | null;
 };
 
 type Props = {
@@ -123,6 +133,9 @@ type Props = {
   // the Blog / LinkedIn rows are publishable (vs "connect first").
   hasBlogDomain?: boolean;
   hasLinkedIn?: boolean;
+  // Active brand_rules head-count for the "Sepio knows N rules" badge (W2).
+  // null = count unavailable → badge hidden.
+  initialRuleCount?: number | null;
 };
 
 export function WriterClient({
@@ -134,6 +147,7 @@ export function WriterClient({
   betaAccess = false,
   hasBlogDomain = false,
   hasLinkedIn = false,
+  initialRuleCount = null,
 }: Props) {
   const t = useTranslations("writer");
   // Locale-aware number formatting via next-intl (same locale on server +
@@ -189,6 +203,14 @@ export function WriterClient({
   );
   // Snapshot of content before last humanize — drives the Undo button.
   const [humanizeSnapshot, setHumanizeSnapshot] = useState<string | null>(null);
+  // W2 receipt for the post in the editor: from the loaded post (edit mode) or
+  // the generate response. null = not tracked → no receipt.
+  const [appliedRules, setAppliedRules] = useState<AppliedRule[] | null>(
+    initialPost?.appliedRules ?? null,
+  );
+  // "Sepio knows N rules" badge — server-seeded head-count, refreshed from the
+  // applyBrandRule action result so it never goes stale after a save (W2).
+  const [ruleCount, setRuleCount] = useState<number | null>(initialRuleCount);
   // Topic picker state — sprint 1C Lane F.
   const [pickedTopic, setPickedTopic] = useState<PickedTopic | null>(null);
   // Angle-of-approach (topic mode only). null = no angle, existing behavior.
@@ -525,6 +547,7 @@ export function WriterClient({
     setPostPlatform(platform);
     setStatus(data.status);
     setExcerpt(data.excerpt ?? "");
+    setAppliedRules(data.applied_rules ?? null);
     setStage("ready");
     // Capture grounding for the editor-header chip — only when an angle drove
     // this draft (non-angle drafts, incl. blog, have no source provenance).
@@ -1077,7 +1100,14 @@ export function WriterClient({
             looks on that channel, with the Preview/Edit toggle. The blog itself
             keeps the normal editor below. */}
         {kitchenSource && kitchenActive !== "hosted" ? (
-          <KitchenCenter mode={kitchenViewMode} onModeChange={setKitchenViewMode} betaAccess={betaAccess} sourceTitle={title} />
+          <KitchenCenter
+            mode={kitchenViewMode}
+            onModeChange={setKitchenViewMode}
+            betaAccess={betaAccess}
+            sourceTitle={title}
+            ruleCount={ruleCount}
+            onRuleCount={setRuleCount}
+          />
         ) : (
           <>
         <div
@@ -1260,12 +1290,21 @@ export function WriterClient({
                 display: blogPreview ? "none" : "block",
               }}
             >
+              {/* W2 memory receipt — the visible payoff of the learning loop:
+                  what Sepio applied to THIS draft. [] renders the teach-CTA
+                  (focuses the panel below); null renders nothing. */}
+              <MemoryReceipt
+                applied={appliedRules}
+                onTeach={focusEditorialPanel}
+              />
               <EditorialPanel
                 postId={postId}
                 brandId={brandId}
                 currentContent={content}
                 disabled={dirty}
                 disabledHint={t("editorialDirtyHint")}
+                ruleCount={ruleCount}
+                onRuleCount={setRuleCount}
                 onApplied={(newBody) => {
                   setContent(newBody);
                   setOriginalContent(newBody);

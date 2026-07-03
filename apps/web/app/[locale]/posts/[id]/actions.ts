@@ -11,6 +11,7 @@ import {
 } from "@/lib/brand-rules/rule-validation";
 import { bodyUpdateForPlatform, maxBodyChars } from "@/lib/post-body";
 import { bumpSourceVersionIfSource } from "@/lib/kitchen/source-version";
+import { ProofItemSchema, MAX_PROOF_ITEMS } from "@/lib/client-brain/schema";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -82,7 +83,7 @@ export async function updatePostContent(
 // landed (design Apply atomicity, Codex #17). The "save rule only" path (no
 // rewrite to apply) calls this with rewrittenText omitted.
 export type ApplyRuleResult =
-  | { ok: true; postUpdated: boolean }
+  | { ok: true; postUpdated: boolean; ruleCount: number }
   | { ok: false; error: string };
 
 export async function applyBrandRule(input: {
@@ -194,6 +195,10 @@ export async function applyBrandRule(input: {
   });
   if (insErr) return { ok: false, error: insErr.message };
 
+  // Post-insert active count for the "Sepio knows N rules" badge (W2) — derived
+  // from the pre-insert read, so the client updates without a refetch.
+  const ruleCount = active.length + 1;
+
   let postUpdated = false;
   if (rewritten) {
     // Stale/published guard (Codex P1): filter on status AND check a row was
@@ -215,7 +220,7 @@ export async function applyBrandRule(input: {
       // Rule saved, post not updated — honest partial state, no silent success.
       revalidatePath(`/posts/${post.id}`);
       revalidatePath(`/brands/${post.brand_id}`);
-      return { ok: true, postUpdated: false };
+      return { ok: true, postUpdated: false, ruleCount };
     }
     postUpdated = true;
     // A kitchen SOURCE rewrite invalidates its channel variants (R-27).
@@ -225,7 +230,76 @@ export async function applyBrandRule(input: {
   revalidatePath(`/posts/${post.id}`);
   revalidatePath("/posts");
   revalidatePath(`/brands/${post.brand_id}`);
-  return { ok: true, postUpdated };
+  return { ok: true, postUpdated, ruleCount };
+}
+
+// W2 one-click business fact — persist a single user-typed (or nudge-proposed)
+// fact as a proof_items row (kind 'source_fact'), so the NEXT generation grounds
+// on it via the Client Brain block. UNGATED like the study-site route (Client
+// Brain is core grounding, not a beta experiment) — the current entry points
+// happen to live in the beta-gated panel, but the action itself is open.
+export async function addProofItem(input: {
+  brandId: string;
+  body: string;
+}): Promise<ActionResult> {
+  // Trim BEFORE validation — the brands/new form schema trims, the generic
+  // ProofItemSchema doesn't; the form behavior is the contract here.
+  const body = input.body.trim();
+  if (!body) return { ok: false, error: "Fact cannot be empty" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in" };
+
+  const parsed = ProofItemSchema.safeParse({
+    kind: "source_fact",
+    body,
+    source: "user",
+    verifiable: false,
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid fact",
+    };
+  }
+
+  // Ownership pre-check for a clean 404 (RLS would otherwise fail the insert
+  // with an opaque policy error).
+  const { data: brand } = await supabase
+    .from("brands")
+    .select("id")
+    .eq("id", input.brandId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (!brand) return { ok: false, error: "Brand not found" };
+
+  // SOFT cap (check-then-insert): two concurrent tabs can land at cap+1. The
+  // cap protects the prompt from bloat, it is not a product invariant — a
+  // transactional RPC for an off-by-one was rejected as overengineering (W2).
+  const { count, error: countErr } = await supabase
+    .from("proof_items")
+    .select("id", { count: "exact", head: true })
+    .eq("brand_id", input.brandId);
+  if (countErr) return { ok: false, error: countErr.message };
+  if ((count ?? 0) >= MAX_PROOF_ITEMS) {
+    return {
+      ok: false,
+      error: `You're at ${MAX_PROOF_ITEMS} saved facts — remove one in brand settings first`,
+    };
+  }
+
+  const { error: insErr } = await supabase.from("proof_items").insert({
+    brand_id: input.brandId,
+    ...parsed.data,
+  });
+  if (insErr) return { ok: false, error: insErr.message };
+
+  // The brand settings page lists Client Brain facts.
+  revalidatePath(`/brands/${input.brandId}/settings`);
+  return { ok: true };
 }
 
 export type BulkDeleteResult =

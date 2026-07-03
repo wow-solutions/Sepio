@@ -4,11 +4,13 @@ import {
   type DifferentiationRowInput,
 } from "@/lib/market-brain/differentiation-context";
 import {
+  filterRenderableRules,
   mergeRuleWords,
   renderVoiceNoteBlocks,
   type BrandRuleInput,
 } from "@/lib/brand-rules/rules-context";
 import { clientBrainContextBlocks } from "@/lib/client-brain/client-brain-context";
+import type { AppliedRule } from "@/lib/applied-rules";
 
 // Single source of truth for the "moat" prompt assembly shared by the generate
 // route (LinkedIn + blog) and the variants fan-out route. Both used to inline the
@@ -22,6 +24,15 @@ import { clientBrainContextBlocks } from "@/lib/client-brain/client-brain-contex
 
 type BrandConfig = Tables<"brand_configs">;
 
+// Rule row as the routes select it for the W2 receipt: the render columns plus
+// id/human_label (display-only). Kept loose (unknown) — validation happens here.
+export type MoatRuleRow = BrandRuleInput & {
+  id?: unknown;
+  human_label?: unknown;
+};
+
+const APPLIED_LABEL_MAX = 80;
+
 export type AssembleMoatContextInput = {
   // brand_configs row (already fetched, RLS-scoped). services/locations/pricing
   // live here; forbidden_words/required_phrases get merged with rule words below.
@@ -29,7 +40,7 @@ export type AssembleMoatContextInput = {
   // market_differentiation row, or null when absent/read-errored.
   diffRow: DifferentiationRowInput | null | undefined;
   // Active brand_rules, already sorted (created_at, id) for byte-stable assembly.
-  rules: BrandRuleInput[];
+  rules: MoatRuleRow[];
   // proof_items rows (raw jsonb re-validated inside clientBrainContextBlocks),
   // already ordered (created_at, id) at the call site for cache stability.
   proofRows: unknown[];
@@ -38,6 +49,11 @@ export type AssembleMoatContextInput = {
 export type AssembleMoatContextResult = {
   configForGen: BrandConfig;
   extraContext: string[];
+  // The receipt: exactly the validated renderable subset that reached the
+  // prompt via mergeRuleWords/renderVoiceNoteBlocks — a row those helpers drop
+  // never appears here. [] = zero rules applied; the CALLER maps a rules read
+  // error to a persisted null (null = "not tracked", [] = "tracked, none").
+  appliedRules: AppliedRule[];
 };
 
 // Merge word-type rules into the config columns (so buildBrandContext emits ONE
@@ -73,5 +89,19 @@ export function assembleMoatContext({
     ...renderVoiceNoteBlocks(rules),
   ];
 
-  return { configForGen, extraContext };
+  // Receipt = the same validated subset the two renderers above consume, in the
+  // same (created_at, id) order. label prefers the human summary; the fallback
+  // is the rule text, truncated so a long rule can't bloat the jsonb snapshot.
+  const appliedRules: AppliedRule[] = filterRenderableRules(rules).map((r) => {
+    const humanLabel =
+      typeof r.human_label === "string" ? r.human_label.trim() : "";
+    return {
+      id: typeof r.id === "string" ? r.id : "",
+      rule_type: String(r.rule_type),
+      scope: String(r.scope),
+      label: humanLabel || String(r.rule_text).trim().slice(0, APPLIED_LABEL_MAX),
+    };
+  });
+
+  return { configForGen, extraContext, appliedRules };
 }

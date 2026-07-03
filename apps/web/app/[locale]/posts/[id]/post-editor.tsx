@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Link } from "@/i18n/navigation";
 import { PublishButton } from "./publish-button";
 import { deletePost } from "./actions";
+import { MemoryReceipt } from "@/app/[locale]/writer/_components/memory-receipt";
+import type { AppliedRule } from "@/lib/applied-rules";
 
 // View-only post detail (kitchen slice 2). Editing — including the Editorial
 // Memory loop — moved to /writer?post=<id>, so this surface only reads, publishes,
@@ -26,6 +28,9 @@ type Props = {
   initialContent: string;
   status: string;
   externalUrl: string | null;
+  // W2 receipt snapshot (null = not tracked → nothing rendered). Read-only
+  // here; the [] teach-CTA links into the writer (the panel lives there).
+  appliedRules?: AppliedRule[] | null;
 };
 
 export function PostEditor({
@@ -33,6 +38,7 @@ export function PostEditor({
   initialContent,
   status,
   externalUrl,
+  appliedRules = null,
 }: Props) {
   const t = useTranslations("posts.detail");
   const router = useRouter();
@@ -120,6 +126,15 @@ export function PostEditor({
           {initialContent || ""}
         </pre>
       </article>
+
+      {appliedRules != null && (
+        <div style={{ marginBottom: 16, marginTop: -4 }}>
+          <MemoryReceipt
+            applied={appliedRules}
+            teachHref={canMutate ? `/writer?post=${postId}` : undefined}
+          />
+        </div>
+      )}
 
       {deleteErr && <ErrorBanner msg={deleteErr} />}
 

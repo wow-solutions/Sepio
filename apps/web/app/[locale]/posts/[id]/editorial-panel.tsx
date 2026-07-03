@@ -4,16 +4,23 @@ import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { Link } from "@/i18n/navigation";
-import { applyBrandRule, updatePostContent } from "./actions";
+import { addProofItem, applyBrandRule, updatePostContent } from "./actions";
 import { primaryPill } from "@/components/ui/button-styles";
+import { EDITORIAL_INSTRUCTION_ID } from "@/app/[locale]/writer/_components/memory-receipt";
 import { RULE_TYPES, RULE_SCOPES, type RuleType, type RuleScope } from "@/lib/brand-rules/schema";
 import type { RefineResponseBody } from "@/lib/brand-rules/refine-response";
 
-// Editorial Memory editor panel (T8). Instruction → refine route (2 parallel
-// LLM calls) → side-by-side diff + a proposed-rule card with a single
-// "Remember" checkbox (default off) + one Apply, per the approved mockup
-// (designs/editorial-memory-panel-20260601/board.html). Apply unchecked =
-// post-only (updatePostContent); checked = atomic post+rule (applyBrandRule).
+// Editorial Memory editor panel (T8, reworked in W2). Instruction → refine
+// route (2 parallel LLM calls) → side-by-side diff + a proposed-rule card with
+// TWO explicit commit buttons (the old single-Apply + "Remember" checkbox
+// doubled the state): primary "Apply & remember rule" = atomic post+rule
+// (applyBrandRule), secondary "Apply edit only" = post-only (updatePostContent).
+// One click = one action; double-click is gated by the shared busy state.
+//
+// W2 additions: a "Sepio knows N rules" badge in the header (server-seeded
+// count, refreshed from the applyBrandRule result — never stale), a one-click
+// save on the fact nudge, and a collapsed "+ business fact" input row so a fact
+// can be added without going through a chat edit.
 
 const EXPECTED_S = 8;
 type Phase = "idle" | "running" | "result";
@@ -25,6 +32,8 @@ export function EditorialPanel({
   onApplied,
   disabled = false,
   disabledHint,
+  ruleCount = null,
+  onRuleCount,
 }: {
   postId: string;
   currentContent: string;
@@ -37,6 +46,10 @@ export function EditorialPanel({
   // against the stale DB copy and Apply could clobber the local edit).
   disabled?: boolean;
   disabledHint?: string;
+  // "Sepio knows N rules" badge (W2). null = count unavailable → badge hidden.
+  // onRuleCount receives the fresh count from a successful rule save.
+  ruleCount?: number | null;
+  onRuleCount?: (n: number) => void;
 }) {
   const t = useTranslations("posts.detail.editorial");
   const router = useRouter();
@@ -52,8 +65,15 @@ export function EditorialPanel({
   const [scope, setScope] = useState<RuleScope>("global");
   const [ruleText, setRuleText] = useState("");
   const [humanLabel, setHumanLabel] = useState("");
-  const [remember, setRemember] = useState(false);
   const [factDismissed, setFactDismissed] = useState(false);
+  // Fact affordances (W2): one-click save on the nudge + the "+ business fact"
+  // input row. Both funnel into the same addProofItem action.
+  const [factNudgeSaved, setFactNudgeSaved] = useState(false);
+  const [factRowOpen, setFactRowOpen] = useState(false);
+  const [factDraft, setFactDraft] = useState("");
+  const [factNotice, setFactNotice] = useState<string | null>(null);
+  const [factError, setFactError] = useState<string | null>(null);
+  const [factSaving, startFactSave] = useTransition();
 
   const [applying, startApply] = useTransition();
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -81,8 +101,8 @@ export function EditorialPanel({
     setPhase("idle");
     setInstruction("");
     setResult(null);
-    setRemember(false);
     setFactDismissed(false);
+    setFactNudgeSaved(false);
     setApplyError(null);
   }
 
@@ -129,7 +149,7 @@ export function EditorialPanel({
       setRuleText(body.proposed_rule.rule_text);
       setHumanLabel(body.proposed_rule.human_label);
     }
-    setRemember(false);
+    setFactNudgeSaved(false);
     setResult(body);
     setPhase("result");
   }
@@ -143,61 +163,85 @@ export function EditorialPanel({
   const hasRule = !!result?.proposed_rule;
   const isFact = result?.edit_kind === "brand_fact" && !!result?.proposed_fact;
 
-  function onApply() {
+  // Secondary commit — apply the rewrite to THIS post only (no rule saved).
+  function onApplyOnly() {
     // Block applying a stale rewrite while the editor is dirty (writer edit
     // mode): the result was computed against the saved body, not the live edit.
-    if (!result || disabled) return;
+    if (!result?.rewritten_post || disabled) return;
+    setApplyError(null);
+    setNotice(null);
+    const newBody = result.rewritten_post;
+    startApply(async () => {
+      const r = await updatePostContent(postId, newBody);
+      if (!r.ok) return setApplyError(r.error);
+      setNotice(t("applied"));
+      // In writer edit mode (onApplied present) the writer owns the live editor,
+      // so a content change is pushed via onApplied instead of router.refresh().
+      if (onApplied) onApplied(newBody);
+      else router.refresh();
+      reset();
+    });
+  }
+
+  // Primary commit — save the reviewed rule; also applies the rewrite when one
+  // exists (rule-first atomicity lives in applyBrandRule). Doubles as the
+  // "Save rule" path when there's no rewrite.
+  function onApplyRemember() {
+    if (!result || !hasRule || disabled) return;
     setApplyError(null);
     setNotice(null);
 
-    const ruleObj = hasRule
-      ? {
-          rule_type: ruleType,
-          scope,
-          rule_text: ruleText.trim(),
-          human_label: humanLabel.trim(),
-          rationale: result.proposed_rule?.rationale ?? null,
-        }
-      : null;
-
-    // In writer edit mode (onApplied present) the writer owns the live editor,
-    // so a content change is pushed via onApplied instead of router.refresh().
+    const ruleObj = {
+      rule_type: ruleType,
+      scope,
+      rule_text: ruleText.trim(),
+      human_label: humanLabel.trim(),
+      rationale: result.proposed_rule?.rationale ?? null,
+    };
     const newBody = result.rewritten_post;
     startApply(async () => {
-      // No rewrite to apply, but there's a rule → save-rule-only path. No content
-      // change, so nothing to push to the writer.
+      const r = await applyBrandRule({
+        postId,
+        rule: ruleObj,
+        rewrittenText: newBody ?? undefined,
+      });
+      if (!r.ok) return setApplyError(r.error);
+      // Rule is saved from here on — keep the badge honest immediately (W2).
+      onRuleCount?.(r.ruleCount);
       if (!newBody) {
-        if (!ruleObj) return;
-        const r = await applyBrandRule({ postId, rule: ruleObj });
-        if (!r.ok) return setApplyError(r.error);
         setNotice(t("ruleSaved"));
         reset();
         if (!onApplied) router.refresh();
         return;
       }
-
-      // Rewrite present. Checked + rule → atomic post+rule; else post-only.
-      if (remember && ruleObj) {
-        const r = await applyBrandRule({
-          postId,
-          rule: ruleObj,
-          rewrittenText: newBody,
-        });
-        if (!r.ok) return setApplyError(r.error);
-        if (!r.postUpdated) {
-          // Honest partial: rule saved, post not updated (content unchanged).
-          setApplyError(t("ruleSavedPostNot"));
-          if (!onApplied) router.refresh();
-          return;
-        }
-      } else {
-        const r = await updatePostContent(postId, newBody);
-        if (!r.ok) return setApplyError(r.error);
+      if (!r.postUpdated) {
+        // Honest partial: rule saved, post not updated (content unchanged).
+        setApplyError(t("ruleSavedPostNot"));
+        if (!onApplied) router.refresh();
+        return;
       }
       setNotice(t("applied"));
       if (onApplied) onApplied(newBody);
       else router.refresh();
       reset();
+    });
+  }
+
+  // Shared fact-save funnel (W2): the nudge one-click and the input row both
+  // persist through addProofItem; the fact grounds the NEXT generation.
+  function saveFact(text: string, from: "nudge" | "row") {
+    if (factSaving) return;
+    setFactError(null);
+    setFactNotice(null);
+    startFactSave(async () => {
+      const r = await addProofItem({ brandId, body: text });
+      if (!r.ok) return setFactError(r.error);
+      setFactNotice(t("factSaved"));
+      if (from === "nudge") setFactNudgeSaved(true);
+      else {
+        setFactDraft("");
+        setFactRowOpen(false);
+      }
     });
   }
 
@@ -211,10 +255,18 @@ export function EditorialPanel({
   return (
     <section style={wrap}>
       <style>{PANEL_CSS}</style>
-      <h3 style={heading}>{t("heading")}</h3>
+      <div style={headRow}>
+        <h3 style={{ ...heading, margin: 0 }}>{t("heading")}</h3>
+        {/* "Sepio knows N rules" — the durable half of the loop's payoff (W2).
+            Server-seeded; refreshed from the applyBrandRule result. */}
+        {ruleCount !== null && (
+          <span style={countBadge}>{t("knowsRules", { count: ruleCount })}</span>
+        )}
+      </div>
 
       <div className="em-instr">
         <input
+          id={EDITORIAL_INSTRUCTION_ID}
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
           onKeyDown={(e) => {
@@ -292,7 +344,7 @@ export function EditorialPanel({
           {hasRule && (
             <RuleCard
               t={t}
-              active={remember && !!result.rewritten_post}
+              active
               humanLabel={humanLabel}
               setHumanLabel={setHumanLabel}
               ruleText={ruleText}
@@ -305,24 +357,40 @@ export function EditorialPanel({
             />
           )}
 
-          {/* Fact nudge (brand_fact) — never auto-written */}
+          {/* Fact nudge (brand_fact) — one-click save (W2); never auto-written */}
           {isFact && !factDismissed && result.proposed_fact && (
             <div style={factCard}>
               <p style={eyebrow}>{t("factTitle")}</p>
               <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--ink)" }}>
                 {result.proposed_fact.fact_text}
               </p>
-              <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-                <Link
-                  href={`/brands/${brandId}/settings`}
-                  style={{ fontSize: 13, color: "var(--sepia-bright)", textDecoration: "none", fontWeight: 500 }}
-                >
-                  {t("factCta")}
-                </Link>
-                <button type="button" onClick={() => setFactDismissed(true)} style={textBtn}>
-                  {t("factDismiss")}
-                </button>
-              </div>
+              {factNudgeSaved ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: "var(--pass)" }}>
+                  {t("factSaved")}
+                </p>
+              ) : (
+                <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      saveFact(result.proposed_fact!.fact_text, "nudge")
+                    }
+                    disabled={factSaving}
+                    style={primaryBtn(factSaving)}
+                  >
+                    {factSaving ? t("factSaving") : t("factSaveNudge")}
+                  </button>
+                  <Link
+                    href={`/brands/${brandId}/settings`}
+                    style={{ fontSize: 13, color: "var(--sepia-bright)", textDecoration: "none", fontWeight: 500 }}
+                  >
+                    {t("factCta")}
+                  </Link>
+                  <button type="button" onClick={() => setFactDismissed(true)} style={textBtn}>
+                    {t("factDismiss")}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -341,65 +409,111 @@ export function EditorialPanel({
 
           {applyError && <Note tone="error">{applyError}</Note>}
 
-          {/* Remember checkbox — only when a rule AND a rewrite both exist */}
-          {hasRule && result.rewritten_post && (
-            <label style={chkRow}>
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
-                style={{ width: 17, height: 17, accentColor: "var(--sepia-bright)", marginTop: 2, flexShrink: 0 }}
-              />
-              <span>
-                <span style={{ fontSize: 13, color: "var(--ink)", fontWeight: 500 }}>
-                  {t("remember")}
-                </span>
-                <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-faint)", marginTop: 1 }}>
-                  {t("rememberSub")}
-                </span>
-              </span>
-            </label>
-          )}
-
-          {/* Commit row */}
+          {/* Commit row — TWO explicit actions when a rule and a rewrite both
+              exist (W2: one click = one action, no checkbox state to double):
+              primary saves the rule (+ applies), secondary applies only. */}
           {(result.rewritten_post || hasRule) && (
             <div style={commitRow}>
-              <button
-                type="button"
-                onClick={onApply}
-                disabled={applying || disabled}
-                className="em-apply"
-                style={primaryBtn(applying || disabled)}
-              >
-                {applying
-                  ? t("applying")
-                  : result.rewritten_post
-                    ? t("apply")
-                    : t("saveRule")}
-              </button>
-              {result.rewritten_post && (
-                <span style={{ fontSize: 13, lineHeight: 1.45, color: "var(--ink-muted)" }}>
-                  {remember && hasRule ? (
-                    <>
-                      {t("confirmOnPre")}
-                      <strong style={{ color: "var(--sepia-bright)", fontWeight: 600 }}>
-                        {t("confirmOnOut")}
-                      </strong>
-                    </>
-                  ) : (
-                    <>
-                      {t("confirmOffPre")}
-                      <strong style={{ color: "var(--ink)", fontWeight: 600 }}>
-                        {t("confirmOffOut")}
-                      </strong>
-                    </>
+              {hasRule ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={onApplyRemember}
+                    disabled={applying || disabled}
+                    className="em-apply"
+                    style={primaryBtn(applying || disabled)}
+                  >
+                    {applying
+                      ? t("applying")
+                      : result.rewritten_post
+                        ? t("applyRemember")
+                        : t("saveRule")}
+                  </button>
+                  {result.rewritten_post && (
+                    <button
+                      type="button"
+                      onClick={onApplyOnly}
+                      disabled={applying || disabled}
+                      className="em-apply"
+                      style={ghostBtn(applying || disabled)}
+                    >
+                      {t("applyOnly")}
+                    </button>
                   )}
-                </span>
+                  <span style={{ fontSize: 11.5, lineHeight: 1.45, color: "var(--ink-faint)" }}>
+                    {t("rememberSub")}
+                  </span>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onApplyOnly}
+                  disabled={applying || disabled}
+                  className="em-apply"
+                  style={primaryBtn(applying || disabled)}
+                >
+                  {applying ? t("applying") : t("apply")}
+                </button>
               )}
             </div>
           )}
         </div>
       )}
+
+      {/* "+ business fact" row (W2) — add a grounding fact in one line, without
+          going through a chat edit. Collapsed by default; always available. */}
+      <div style={{ marginTop: 14 }}>
+        {!factRowOpen ? (
+          <button
+            type="button"
+            onClick={() => {
+              setFactRowOpen(true);
+              setFactNotice(null);
+              setFactError(null);
+            }}
+            style={{ ...textBtn, color: "var(--sepia-bright)", fontWeight: 500 }}
+          >
+            {t("factRowToggle")}
+          </button>
+        ) : (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              value={factDraft}
+              onChange={(e) => setFactDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing && factDraft.trim()) {
+                  saveFact(factDraft, "row");
+                }
+              }}
+              placeholder={t("factRowPlaceholder")}
+              disabled={factSaving}
+              style={{ ...instrInput, minWidth: 200 }}
+            />
+            <button
+              type="button"
+              onClick={() => saveFact(factDraft, "row")}
+              disabled={factSaving || !factDraft.trim()}
+              style={primaryBtn(factSaving || !factDraft.trim())}
+            >
+              {factSaving ? t("factSaving") : t("factSave")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFactRowOpen(false);
+                setFactError(null);
+              }}
+              style={textBtn}
+            >
+              {t("factCancel")}
+            </button>
+          </div>
+        )}
+        {factError && <Note tone="error">{factError}</Note>}
+        {factNotice && !factRowOpen && !factNudgeSaved && (
+          <Note tone="ok">{factNotice}</Note>
+        )}
+      </div>
     </section>
   );
 }
@@ -705,12 +819,20 @@ const cautionTag: CSSProperties = {
   whiteSpace: "nowrap",
   flexShrink: 0,
 };
-const chkRow: CSSProperties = {
+const headRow: CSSProperties = {
   display: "flex",
+  alignItems: "baseline",
+  justifyContent: "space-between",
   gap: 10,
-  alignItems: "flex-start",
-  marginTop: 16,
-  cursor: "pointer",
+  marginBottom: 12,
+};
+const countBadge: CSSProperties = {
+  fontSize: 11,
+  color: "var(--borderline-ink)",
+  border: "1px solid rgba(201,166,107,.35)",
+  borderRadius: 999,
+  padding: "1px 9px",
+  whiteSpace: "nowrap",
 };
 const commitRow: CSSProperties = {
   display: "flex",
@@ -731,4 +853,20 @@ const textBtn: CSSProperties = {
 function primaryBtn(disabled: boolean): CSSProperties {
   // Shared sepia pill — one primary vocabulary across writer/kitchen/panel.
   return { ...primaryPill({ disabled, height: 38 }), padding: "0 20px" };
+}
+
+function ghostBtn(disabled: boolean): CSSProperties {
+  return {
+    height: 38,
+    padding: "0 16px",
+    borderRadius: 999,
+    fontSize: 13,
+    fontWeight: 500,
+    fontFamily: "inherit",
+    cursor: disabled ? "not-allowed" : "pointer",
+    border: "1px solid var(--border-strong)",
+    background: "transparent",
+    color: "var(--ink)",
+    opacity: disabled ? 0.55 : 1,
+  };
 }

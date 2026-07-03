@@ -122,4 +122,109 @@ describe("assembleMoatContext", () => {
     expect(configForGen.forbidden_words).toEqual(["synergy", "leverage"]);
     expect(configForGen.required_phrases).toEqual(["let's dig in"]);
   });
+
+  // ── W2 applied-rules receipt ───────────────────────────────────────────────
+
+  test("appliedRules snapshots valid rules with id/type/scope/label", () => {
+    const { appliedRules } = assembleMoatContext({
+      config: fixtureConfig(),
+      diffRow: null,
+      rules: [
+        {
+          id: "r-1",
+          rule_type: "voice_note",
+          scope: "opening",
+          rule_text: "Open with a concrete number.",
+          human_label: "Concrete openers",
+        },
+        {
+          id: "r-2",
+          rule_type: "forbidden_word",
+          scope: "global",
+          rule_text: "synergy",
+          human_label: "No synergy",
+        },
+      ],
+      proofRows: [],
+    });
+
+    expect(appliedRules).toEqual([
+      { id: "r-1", rule_type: "voice_note", scope: "opening", label: "Concrete openers" },
+      { id: "r-2", rule_type: "forbidden_word", scope: "global", label: "No synergy" },
+    ]);
+  });
+
+  test("appliedRules is [] for rules: [] (tracked, zero applied)", () => {
+    const { appliedRules } = assembleMoatContext({
+      config: fixtureConfig(),
+      diffRow: null,
+      rules: [],
+      proofRows: [],
+    });
+    expect(appliedRules).toEqual([]);
+  });
+
+  test("a malformed row is dropped from the receipt, consistent with the render", () => {
+    // scope=opening on a forbidden_word violates the schema refine → the
+    // renderers drop it, so the receipt must NOT count it either.
+    const broken = {
+      id: "r-bad",
+      rule_type: "forbidden_word",
+      scope: "opening",
+      rule_text: "synergy",
+      human_label: "Broken",
+    };
+    const ok = {
+      id: "r-ok",
+      rule_type: "voice_note",
+      scope: "global",
+      rule_text: "Write like you talk.",
+      human_label: "Voice",
+    };
+    const { appliedRules, configForGen, extraContext } = assembleMoatContext({
+      config: fixtureConfig(),
+      diffRow: null,
+      rules: [broken, ok],
+      proofRows: [],
+    });
+
+    expect(appliedRules.map((r) => r.id)).toEqual(["r-ok"]);
+    // And the broken word rule indeed never reached the prompt.
+    expect(configForGen.forbidden_words).toEqual([]);
+    expect(extraContext.join("\n")).not.toContain("synergy");
+  });
+
+  test("label falls back to rule_text truncated to 80 chars", () => {
+    const longText = "x".repeat(120);
+    const { appliedRules } = assembleMoatContext({
+      config: fixtureConfig(),
+      diffRow: null,
+      rules: [
+        { id: "r-1", rule_type: "voice_note", scope: "global", rule_text: longText },
+        {
+          id: "r-2",
+          rule_type: "voice_note",
+          scope: "global",
+          rule_text: "Short.",
+          human_label: "   ",
+        },
+      ],
+      proofRows: [],
+    });
+    expect(appliedRules[0].label).toBe("x".repeat(80));
+    // Whitespace-only human_label is not a label.
+    expect(appliedRules[1].label).toBe("Short.");
+  });
+
+  test("appliedRules id defaults to '' when the row carries no string id", () => {
+    const { appliedRules } = assembleMoatContext({
+      config: fixtureConfig(),
+      diffRow: null,
+      rules: [{ rule_type: "voice_note", scope: "global", rule_text: "No id." }],
+      proofRows: [],
+    });
+    expect(appliedRules).toEqual([
+      { id: "", rule_type: "voice_note", scope: "global", label: "No id." },
+    ]);
+  });
 });

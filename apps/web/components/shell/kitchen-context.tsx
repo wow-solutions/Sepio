@@ -23,6 +23,7 @@ import {
   type ReactNode,
 } from "react";
 import { isChannelId, type ChannelId } from "@/lib/kitchen/channel-formats";
+import { coerceAppliedRules, type AppliedRule } from "@/lib/applied-rules";
 
 export type VariantData = {
   postId: string | null;
@@ -33,6 +34,9 @@ export type VariantData = {
   error: string | null;
   // posts.external_post_url once published (the live LinkedIn/etc URL); null otherwise.
   externalUrl: string | null;
+  // W2 receipt snapshot from posts.applied_rules. null = not tracked (no
+  // receipt); [] = tracked, zero rules applied (teach-Sepio CTA).
+  appliedRules: AppliedRule[] | null;
 };
 
 export type KitchenSource = {
@@ -144,6 +148,7 @@ export function KitchenProvider({
             loading: false,
             error: null,
             externalUrl: null,
+            appliedRules: null,
           },
           ...initialGroup.variants,
         }
@@ -219,6 +224,7 @@ export function KitchenProvider({
                 loading: false,
                 error: null,
                 externalUrl: null,
+                appliedRules: null,
               },
             }
           : {},
@@ -269,6 +275,7 @@ export function KitchenProvider({
           loading: true,
           error: null,
           externalUrl: v[c]?.externalUrl ?? null,
+          appliedRules: v[c]?.appliedRules ?? null,
         },
       }));
       try {
@@ -283,6 +290,7 @@ export function KitchenProvider({
               content_text?: string | null;
               content_markdown?: string | null;
               variant_state?: string;
+              applied_rules?: unknown;
               error?: string;
             }
           | null;
@@ -296,6 +304,7 @@ export function KitchenProvider({
               loading: false,
               error: data?.error ?? `HTTP ${res.status}`,
               externalUrl: v[c]?.externalUrl ?? null,
+              appliedRules: v[c]?.appliedRules ?? null,
             },
           }));
           return null;
@@ -310,6 +319,7 @@ export function KitchenProvider({
             loading: false,
             error: null,
             externalUrl: v[c]?.externalUrl ?? null,
+            appliedRules: coerceAppliedRules(data.applied_rules),
           },
         }));
         return newPostId;
@@ -324,6 +334,7 @@ export function KitchenProvider({
             loading: false,
             error: msg,
             externalUrl: v[c]?.externalUrl ?? null,
+            appliedRules: v[c]?.appliedRules ?? null,
           },
         }));
         return null;

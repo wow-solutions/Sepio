@@ -1035,6 +1035,7 @@ export type Database = {
       }
       posts: {
         Row: {
+          applied_rules: Json | null
           approved_at: string | null
           approved_by: string | null
           brand_id: string
@@ -1073,6 +1074,7 @@ export type Database = {
           variant_state: string
         }
         Insert: {
+          applied_rules?: Json | null
           approved_at?: string | null
           approved_by?: string | null
           brand_id: string
@@ -1111,6 +1113,7 @@ export type Database = {
           variant_state?: string
         }
         Update: {
+          applied_rules?: Json | null
           approved_at?: string | null
           approved_by?: string | null
           brand_id?: string
@@ -1441,6 +1444,7 @@ export type Database = {
       }
       insert_post_and_mark_candidate: {
         Args: {
+          p_applied_rules?: Json
           p_brand_id: string
           p_candidate_id?: string
           p_content_markdown?: string
@@ -1457,6 +1461,7 @@ export type Database = {
           p_title?: string
         }
         Returns: {
+          applied_rules: Json | null
           approved_at: string | null
           approved_by: string | null
           brand_id: string

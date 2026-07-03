@@ -6,6 +6,7 @@ import { activeBlogDomainForBrand } from "@/lib/blog-domain";
 import { AppShell } from "@/components/shell/app-shell";
 import type { BrandOption } from "@/components/brand/brand-switcher";
 import { getPostBody } from "@/lib/post-body";
+import { coerceAppliedRules } from "@/lib/applied-rules";
 import { isChannelId, type ChannelId } from "@/lib/kitchen/channel-formats";
 import type {
   InitialGroup,
@@ -30,10 +31,11 @@ type EditPostRow = {
   source_post_id: string | null;
   variant_state: string | null;
   generated_from_source_version: number | null;
+  applied_rules: unknown;
 };
 
 const POST_COLS =
-  "id, brand_id, platform, language, status, content_text, content_markdown, title, excerpt, external_post_url, content_group_id, source_post_id, variant_state, generated_from_source_version";
+  "id, brand_id, platform, language, status, content_text, content_markdown, title, excerpt, external_post_url, content_group_id, source_post_id, variant_state, generated_from_source_version, applied_rules";
 
 function postToInitial(p: EditPostRow): InitialPost {
   return {
@@ -45,6 +47,7 @@ function postToInitial(p: EditPostRow): InitialPost {
     excerpt: p.excerpt ?? "",
     body: getPostBody(p),
     externalUrl: p.external_post_url,
+    appliedRules: coerceAppliedRules(p.applied_rules),
   };
 }
 
@@ -165,6 +168,7 @@ export default async function WriterPage({ searchParams }: PageProps) {
           loading: false,
           error: null,
           externalUrl: r.external_post_url ?? null,
+          appliedRules: coerceAppliedRules(r.applied_rules),
         };
       }
       const openedPlatform: ChannelId =
@@ -217,15 +221,23 @@ export default async function WriterPage({ searchParams }: PageProps) {
   // Per-brand connection state for the publish destination picker: blog is
   // publishable only with an active own-domain; LinkedIn only with an active
   // OAuth token. Resolved for the active brand (RLS-scoped / SECURITY DEFINER).
-  const [activeDomain, { data: liToken }] = await Promise.all([
-    activeBlogDomainForBrand(activeBrand.id),
-    supabase
-      .from("brand_oauth_tokens")
-      .select("status")
-      .eq("brand_id", activeBrand.id)
-      .eq("platform", "linkedin")
-      .maybeSingle(),
-  ]);
+  // ruleCount seeds the "Sepio knows N rules" badge (W2) — head-count only, the
+  // dashboard's cheap-count pattern. null on a count error → badge hidden.
+  const [activeDomain, { data: liToken }, { count: ruleCount }] =
+    await Promise.all([
+      activeBlogDomainForBrand(activeBrand.id),
+      supabase
+        .from("brand_oauth_tokens")
+        .select("status")
+        .eq("brand_id", activeBrand.id)
+        .eq("platform", "linkedin")
+        .maybeSingle(),
+      supabase
+        .from("brand_rules")
+        .select("id", { count: "exact", head: true })
+        .eq("brand_id", activeBrand.id)
+        .eq("active", true),
+    ]);
   const hasBlogDomain = !!activeDomain;
   const hasLinkedIn = liToken?.status === "active";
 
@@ -266,6 +278,7 @@ export default async function WriterPage({ searchParams }: PageProps) {
         betaAccess={betaAccess}
         hasBlogDomain={hasBlogDomain}
         hasLinkedIn={hasLinkedIn}
+        initialRuleCount={ruleCount ?? null}
       />
     </AppShell>
   );
