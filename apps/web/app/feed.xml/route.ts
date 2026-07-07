@@ -1,12 +1,19 @@
+import { headers } from "next/headers";
 import { listPublished } from "@/lib/blog";
+import { listBrandBlogPosts } from "@/lib/brand-blog";
 import { SITE_URL, localizedUrl } from "@/lib/seo";
+import { bareHost } from "@/lib/app-host";
+import { resolveBlogDomain } from "@/lib/blog-domain";
+import { blogUrl } from "@/lib/blog-domain-routing";
 
-// RSS 2.0 feed for the blog at /feed.xml. Top-level route handler (parallel to
-// app/sitemap.ts and app/robots.ts) so next-intl never localizes it.
+// RSS 2.0 feed for the blog. Host-aware, like robots.ts/sitemap.ts: a client
+// blog domain gets that brand's own feed; the Sepio app host gets the
+// marketing blog feed (original behavior). Top-level route handler (parallel
+// to app/sitemap.ts and app/robots.ts) so next-intl never localizes it.
 //
 // IMPORTANT: feed.xml must be excluded in proxy.ts's matcher, exactly like
-// sitemap.xml/robots.txt — otherwise next-intl swallows the path and returns a
-// 404 at runtime (the build won't catch it). See blog PR #34.
+// sitemap.xml/robots.txt/llms.txt — otherwise next-intl swallows the path and
+// returns a 404 at runtime (the build won't catch it). See blog PR #34.
 export const revalidate = 3600; // rebuild the feed at most hourly
 
 const FEED_TITLE = "Sepio Blog";
@@ -29,11 +36,12 @@ function rfc822(iso: string | null): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toUTCString();
 }
 
-export async function GET() {
+// Sepio app host: original marketing blog feed, unchanged.
+async function sepioFeed(): Promise<string> {
   const { posts } = await listPublished(1, FEED_LIMIT);
 
   const feedUrl = `${SITE_URL}/feed.xml`;
-  const blogUrl = localizedUrl("en", "blog");
+  const link = localizedUrl("en", "blog");
   const lastBuildDate = rfc822(posts[0]?.published_at ?? null) ?? new Date().toUTCString();
 
   const items = posts
@@ -55,11 +63,11 @@ export async function GET() {
     })
     .join("\n");
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>${esc(FEED_TITLE)}</title>
-    <link>${blogUrl}</link>
+    <link>${link}</link>
     <description>${esc(FEED_DESCRIPTION)}</description>
     <language>en</language>
     <lastBuildDate>${lastBuildDate}</lastBuildDate>
@@ -67,6 +75,63 @@ export async function GET() {
 ${items}
   </channel>
 </rss>`;
+}
+
+// Client blog domain: that brand's own feed, primary-locale posts only (the
+// domain's root locale — mirrors robots.ts/sitemap.ts scoping to what's
+// actually routable at that host).
+async function clientBlogFeed(
+  host: string,
+  brandId: string,
+  brandName: string | null,
+  primaryLocale: string,
+): Promise<string> {
+  const name = brandName ?? host;
+  const posts = await listBrandBlogPosts(brandId, primaryLocale);
+
+  const feedUrl = `https://${host}/feed.xml`;
+  const link = blogUrl(host, primaryLocale, primaryLocale);
+  const lastBuildDate = rfc822(posts[0]?.published_at ?? null) ?? new Date().toUTCString();
+
+  const items = posts
+    .map((p) => {
+      const url = blogUrl(host, primaryLocale, primaryLocale, p.slug);
+      const pub = rfc822(p.published_at);
+      return [
+        "    <item>",
+        `      <title>${esc(p.title)}</title>`,
+        `      <link>${url}</link>`,
+        `      <guid isPermaLink="true">${url}</guid>`,
+        pub ? `      <pubDate>${pub}</pubDate>` : "",
+        p.excerpt ? `      <description>${esc(p.excerpt)}</description>` : "",
+        "    </item>",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>${esc(`${name} — Blog`)}</title>
+    <link>${link}</link>
+    <description>${esc(`Latest articles from ${name}.`)}</description>
+    <language>${primaryLocale}</language>
+    <lastBuildDate>${lastBuildDate}</lastBuildDate>
+    <atom:link href="${feedUrl}" rel="self" type="application/rss+xml" />
+${items}
+  </channel>
+</rss>`;
+}
+
+export async function GET() {
+  const host = bareHost((await headers()).get("host"));
+  const domain = await resolveBlogDomain(host);
+
+  const xml = domain
+    ? await clientBlogFeed(host, domain.brandId, domain.brandName, domain.primaryLocale)
+    : await sepioFeed();
 
   return new Response(xml, {
     headers: {

@@ -36,8 +36,8 @@ export async function proxy(request: NextRequest) {
   // host→brand resolution happens in the /sites server component (cached).
   // NOTE: the folder is app/sites (NOT app/_sites — a leading underscore is a
   // Next private folder, excluded from routing). robots.txt / sitemap.xml /
-  // feed.xml are excluded by `matcher` below, so they reach their host-aware
-  // route handlers directly on the client domain.
+  // feed.xml / llms.txt are excluded by `matcher` below, so they reach their
+  // host-aware route handlers directly on the client domain.
   if (!isAppHost(request.headers.get("host"))) {
     const url = request.nextUrl.clone();
     // Root "/" → "/sites" (NOT "/sites/": a trailing slash would 308-redirect
@@ -74,8 +74,8 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Skip Next.js internals, favicon, metadata routes (sitemap/robots), and
-    // static files. sitemap.xml/robots.txt/feed.xml must reach their app/ route
-    // handlers, not be swallowed by intl locale routing (would 404).
-    "/((?!_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|feed\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // static files. sitemap.xml/robots.txt/feed.xml/llms.txt must reach their
+    // app/ route handlers, not be swallowed by intl locale routing (would 404).
+    "/((?!_next/static|_next/image|favicon.ico|sitemap\\.xml|robots\\.txt|feed\\.xml|llms\\.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

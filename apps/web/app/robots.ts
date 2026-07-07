@@ -17,17 +17,20 @@ const PRIVATE_PATHS = [
   "/reset",
 ];
 
-// AI answer-engine crawlers we explicitly welcome on client blogs (being in
-// these indexes is the whole point — content that AI search cites). A bare
-// allow-all already permits them; listing them makes intent explicit.
+// AI crawlers we explicitly welcome on client blogs: answer-engine bots
+// (being in these indexes is the whole point — content that AI search cites)
+// plus the training-data crawlers that feed those models. A bare allow-all
+// already permits them; listing them makes intent explicit.
 const AI_BOTS = [
   "Googlebot",
+  "Google-Extended",
   "OAI-SearchBot",
   "ChatGPT-User",
   "PerplexityBot",
   "Perplexity-User",
   "ClaudeBot",
   "GPTBot",
+  "CCBot",
 ];
 
 // Host-aware: reading headers() makes this a dynamic route handler. The proxy
