@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { COUNTRIES } from "@/lib/_private/dataforseo-locations";
 import { updateBrandBasics } from "./actions";
 
 type Props = {
@@ -23,6 +24,8 @@ type Props = {
   initialLanguage: string;
   initialAdditionalLanguages: string[];
   initialBrandVoice: string;
+  initialTargetMarket: string | null;
+  clientBrainLocations: string[];
 };
 
 const MAX_VOICE_CHARS = 5000;
@@ -36,6 +39,10 @@ const LANGUAGE_LABELS: Record<(typeof ALLOWED_LANGUAGES)[number], string> = {
   fr: "Français",
 };
 
+// Radix Select reserves the empty string for "no selection" — use a sentinel
+// for the "not set" option and translate to/from null at the edges.
+const UNSET_MARKET = "__unset__";
+
 export function BasicsForm({
   brandId,
   locale,
@@ -44,6 +51,8 @@ export function BasicsForm({
   initialLanguage,
   initialAdditionalLanguages,
   initialBrandVoice,
+  initialTargetMarket,
+  clientBrainLocations,
 }: Props) {
   const t = useTranslations("brandSettings");
 
@@ -56,6 +65,9 @@ export function BasicsForm({
     initialAdditionalLanguages,
   );
   const [brandVoice, setBrandVoice] = useState<string>(initialBrandVoice);
+  const [targetMarket, setTargetMarket] = useState<string | null>(
+    initialTargetMarket,
+  );
 
   const [dirty, setDirty] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -91,6 +103,7 @@ export function BasicsForm({
         primaryLanguage: language,
         additionalLanguages: additionalLanguages.filter((l) => l !== language),
         brandVoice: brandVoice,
+        targetMarket: targetMarket,
       });
       if (!result.ok) {
         setError(result.error);
@@ -282,6 +295,65 @@ export function BasicsForm({
         >
           {brandVoice.length} / {MAX_VOICE_CHARS}
         </p>
+      </div>
+
+      {/* Target market */}
+      <div>
+        <label
+          style={{
+            display: "block",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            fontWeight: 500,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--ink-faint)",
+            marginBottom: 6,
+          }}
+        >
+          {t("targetMarketLabel")}
+        </label>
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--ink-muted)",
+            margin: "0 0 8px",
+          }}
+        >
+          {t("targetMarketDescription")}
+        </p>
+        <Select
+          value={targetMarket ?? UNSET_MARKET}
+          onValueChange={(v) => {
+            setTargetMarket(v === UNSET_MARKET ? null : v);
+            markDirty();
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={UNSET_MARKET}>
+              {t("targetMarketEmpty")}
+            </SelectItem>
+            {COUNTRIES.map((c) => (
+              <SelectItem key={c.code} value={c.code}>
+                {locale === "es" ? c.nameEs : c.nameEn}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {clientBrainLocations.length > 0 && (
+          <p
+            style={{
+              fontSize: 12,
+              color: "var(--ink-faint)",
+              margin: "8px 0 0",
+            }}
+          >
+            {t("targetMarketHint", { locations: clientBrainLocations.join(", ") })}
+          </p>
+        )}
       </div>
 
       {/* Save row */}

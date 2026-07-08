@@ -9,6 +9,7 @@ const fixture: Tables<"brand_configs"> = {
   brand_id: "00000000-0000-0000-0000-000000000000",
   updated_at: new Date().toISOString(),
   brand_voice: "Direct, technical, no fluff. Writes like a senior engineer.",
+  target_market: null,
   tone_attributes: ["professional", "warm"],
   forbidden_words: ["leverage", "synergy"],
   required_phrases: [],

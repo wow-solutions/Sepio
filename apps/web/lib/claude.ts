@@ -6,9 +6,10 @@ import {
   TEMPERATURE_BY_FORMAT,
   type GenFormat,
 } from "./_private/format-specs";
-import { buildBlogArticleUserText } from "./_private/blog-article";
-import type { KeywordIdea } from "./_private/dataforseo-keywords";
-import type { AngleId, Stance } from "./angles-shared";
+import {
+  buildBlogArticleUserText,
+  type BuildBlogArticleUserTextOptions,
+} from "./_private/blog-article";
 import { PRIMARY_URL_TOKEN } from "./kitchen/channel-formats";
 import { withTransientRetry } from "./retry";
 
@@ -238,21 +239,11 @@ export async function generateBlogArticle(
   config: BrandConfigRow,
   primaryLanguage: string,
   brief: string,
-  opts?: GenerateOptions & {
-    keywords?: KeywordIdea[];
-    angle?: AngleId;
-    stance?: Stance | null;
-  },
+  opts?: GenerateOptions & BuildBlogArticleUserTextOptions,
 ): Promise<GenerateResult> {
   const b = brief.trim();
   if (!b) throw new ClaudeError("brief is empty");
-  return callClaude(
-    config,
-    primaryLanguage,
-    buildBlogArticleUserText(b, opts?.keywords, opts?.angle, opts?.stance),
-    "blog",
-    opts,
-  );
+  return callClaude(config, primaryLanguage, buildBlogArticleUserText(b, opts), "blog", opts);
 }
 
 // Content Kitchen (fan-out): adapt a SOURCE article (the blog/hosted post) into

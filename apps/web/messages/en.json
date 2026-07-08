@@ -214,6 +214,10 @@
     "voiceLabel": "Brand voice",
     "voiceDescription": "Free-text guidance on how this brand sounds — tone, perspective, words to use or avoid. Fed straight into every generation prompt.",
     "voicePlaceholder": "e.g. Direct, no fluff. Talks to facilities managers, not consumers. Uses metric units. Never refers to clients as 'customers' — they're 'operators'.",
+    "targetMarketLabel": "Target market",
+    "targetMarketDescription": "Country to ground keyword research and search-demand data in.",
+    "targetMarketEmpty": "— not set (defaults to US)",
+    "targetMarketHint": "Client Brain knows this brand serves: {locations}",
     "save": "Save",
     "saved": "Saved",
     "backToBrand": "← Back to brand"

@@ -24,6 +24,12 @@ import {
   type ArticleExtract,
 } from "@/lib/_private/article-fetch";
 import { assembleMoatContext } from "@/lib/moat-context";
+import { countUsableFacts } from "@/lib/client-brain/usable-facts";
+import { renderClientBrainBlock } from "@/lib/client-brain/client-brain-context";
+import {
+  gatherBlogResearch,
+  validateBlogBody,
+} from "@/lib/_private/blog-orchestration";
 import { tryDetection } from "@/lib/pangram";
 
 // POST /api/posts/generate
@@ -154,7 +160,9 @@ export async function POST(request: Request): Promise<Response> {
   // Fetch brand + config (RLS prevents reading another user's brand).
   const { data: brand } = await supabase
     .from("brands")
-    .select("id, account_id, primary_language, additional_languages, name")
+    .select(
+      "id, account_id, primary_language, additional_languages, name, website_url",
+    )
     .eq("id", brand_id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -292,6 +300,13 @@ export async function POST(request: Request): Promise<Response> {
     ? null
     : appliedRules;
   const appliedRulesJson = appliedRulesSnapshot as unknown as Json;
+  // Does this brand have enough usable (verified metric/certification/case_study)
+  // Client Brain facts to justify the blog "weave in facts" directive? Reuses
+  // the same proofRows already read above for assembleMoatContext. The count
+  // (not just the flag) also gates external fact research: below the threshold
+  // the article would come out number-less, so we search the web (slice 2 D5).
+  const usableFactsCount = countUsableFacts(proofErr ? [] : (proofRows ?? []));
+  const hasUsableClientFacts = usableFactsCount > 0;
 
   // ── Blog article branch (kitchen slice 1) ─────────────────────────────────
   // Same engine, brand voice, and moat (Market Brain + Editorial Memory via
@@ -334,22 +349,74 @@ export async function POST(request: Request): Promise<Response> {
       cacheReadTokens: number;
     };
 
-    // Generate one article in a single language. Throws ClaudeError on failure.
-    const generateOne = async (language: string): Promise<BlogVariant> => {
-      const blog = await generateBlogArticle(
-        configForGen,
-        language,
-        brief,
-        { extraContext, angle, stance: effectiveStance },
-      );
+    // Pre-generation research (slice 2): keyword targeting (brand's market,
+    // primary language only — D1/D2) ∥ external fact research (only when the
+    // brand's own usable facts are scarce — D5). Both legs degrade to empty on
+    // any failure; the cache client is best-effort (missing service key just
+    // means uncached DataForSEO calls).
+    let cacheClient: ReturnType<typeof createServiceRoleClient> | undefined;
+    try {
+      cacheClient = createServiceRoleClient();
+    } catch {
+      cacheClient = undefined;
+    }
+    const research = await gatherBlogResearch({
+      brief,
+      primaryLanguage: languages[0],
+      targetMarket: config.target_market ?? null,
+      usableFactsCount,
+      cacheClient,
+    });
+
+    // Validator inputs, shared by every language variant. clientFacts is the
+    // same rendered block the prompt sees (services/pricing/proof), so the
+    // tracer judges against exactly what the writer was given.
+    const clientFactsBlock = renderClientBrainBlock({
+      services: config.services,
+      locations: config.locations,
+      pricing: config.pricing,
+      proofItems: proofErr ? [] : (proofRows ?? []),
+    });
+    const validatorClientFacts = clientFactsBlock ? [clientFactsBlock] : [];
+    const allowedUrls = [
+      ...research.externalFacts.map((f) => f.source_url),
+      ...(sourceUrl ? [sourceUrl] : []),
+      ...(brand.website_url ? [brand.website_url] : []),
+    ];
+
+    // Generate one article in a single language, validated BEFORE it is
+    // returned (and therefore before any insert — an unvalidated sibling can
+    // never reach the database). Throws ClaudeError on generation failure.
+    const generateOne = async (
+      language: string,
+      opts?: { keywords?: typeof research.keywords },
+    ): Promise<BlogVariant> => {
+      const blog = await generateBlogArticle(configForGen, language, brief, {
+        extraContext,
+        angle,
+        stance: effectiveStance,
+        hasClientFacts: hasUsableClientFacts,
+        topicSourceUrl: sourceUrl,
+        keywords: opts?.keywords,
+        externalFacts: research.externalFacts.length
+          ? research.externalFacts
+          : undefined,
+      });
       const { title: parsedTitle, body, description } =
         parseBlogArticleOutput(blog.text);
+      const validatedBody = await validateBlogBody({
+        body,
+        language,
+        clientFacts: validatorClientFacts,
+        externalFacts: research.externalFacts,
+        allowedUrls,
+      });
       return {
         language,
         // hostedAdapter requires a non-empty title at publish; fall back to the
         // brief if the model skipped the TITLE line. Editable in the writer.
         title: parsedTitle ?? brief.slice(0, 200),
-        body,
+        body: validatedBody,
         excerpt: description,
         cacheReadTokens: blog.usage.cache_read_input_tokens,
       };
@@ -359,7 +426,11 @@ export async function POST(request: Request): Promise<Response> {
     // is generated first and its failure is fatal (nothing is saved).
     let primaryVariant: BlogVariant;
     try {
-      primaryVariant = await generateOne(languages[0]);
+      // Keyword targeting is primary-language-only (D1): sibling languages
+      // have a different search reality, so translated keywords would mislead.
+      primaryVariant = await generateOne(languages[0], {
+        keywords: research.keywords,
+      });
     } catch (err) {
       return generationErrorResponse(err);
     }

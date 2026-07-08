@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
@@ -10,15 +11,22 @@ export type UpdateBrandBasicsResult =
 const ALLOWED_LANGUAGES = ["en", "es", "ru", "pt", "fr"] as const;
 type AllowedLanguage = (typeof ALLOWED_LANGUAGES)[number];
 
+const TargetMarketSchema = z
+  .string()
+  .regex(/^[A-Z]{2}$/)
+  .nullable();
+
 type UpdateBasicsInput = {
   industryCategoryId: string | null;
   primaryLanguage: string;
   additionalLanguages: string[];
   brandVoice: string;
+  targetMarket: string | null;
 };
 
 /**
- * Update brand.industry_category_id, primary_language и brand_configs.brand_voice.
+ * Update brand.industry_category_id, primary_language и
+ * brand_configs.{brand_voice, target_market}.
  * Authorization: RLS на brands и brand_configs enforces account_id = auth.uid().
  */
 export async function updateBrandBasics(
@@ -48,6 +56,11 @@ export async function updateBrandBasics(
 
   if (input.brandVoice.length > 5000) {
     return { ok: false, error: "brand_voice too long (max 5000)" };
+  }
+
+  const targetMarketParsed = TargetMarketSchema.safeParse(input.targetMarket);
+  if (!targetMarketParsed.success) {
+    return { ok: false, error: "Invalid target market" };
   }
 
   const supabase = await createClient();
@@ -85,7 +98,10 @@ export async function updateBrandBasics(
   // если row отсутствует (нештатно), просто не пишем — invariant breach логируем.
   const { error: cfgErr } = await supabase
     .from("brand_configs")
-    .update({ brand_voice: input.brandVoice || null })
+    .update({
+      brand_voice: input.brandVoice || null,
+      target_market: targetMarketParsed.data,
+    })
     .eq("brand_id", brandId);
 
   if (cfgErr) {

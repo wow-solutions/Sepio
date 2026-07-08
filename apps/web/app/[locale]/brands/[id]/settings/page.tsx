@@ -41,7 +41,7 @@ export default async function BrandSettingsPage({ params }: PageProps) {
 
   const { data: brandConfig } = await supabase
     .from("brand_configs")
-    .select("brand_voice")
+    .select("brand_voice, target_market")
     .eq("brand_id", brandId)
     .maybeSingle();
 
@@ -218,6 +218,8 @@ export default async function BrandSettingsPage({ params }: PageProps) {
             initialLanguage={brand.primary_language}
             initialAdditionalLanguages={brand.additional_languages ?? []}
             initialBrandVoice={brandConfig?.brand_voice ?? ""}
+            initialTargetMarket={brandConfig?.target_market ?? null}
+            clientBrainLocations={clientBrainFacts.locations}
           />
         </div>
 

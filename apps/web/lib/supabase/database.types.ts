@@ -332,6 +332,7 @@ export type Database = {
           seo_keywords_secondary: string[] | null
           services: Json
           style_guide: string | null
+          target_market: string | null
           tone_attributes: string[] | null
           trigger_events: string[] | null
           updated_at: string
@@ -355,6 +356,7 @@ export type Database = {
           seo_keywords_secondary?: string[] | null
           services?: Json
           style_guide?: string | null
+          target_market?: string | null
           tone_attributes?: string[] | null
           trigger_events?: string[] | null
           updated_at?: string
@@ -378,6 +380,7 @@ export type Database = {
           seo_keywords_secondary?: string[] | null
           services?: Json
           style_guide?: string | null
+          target_market?: string | null
           tone_attributes?: string[] | null
           trigger_events?: string[] | null
           updated_at?: string
