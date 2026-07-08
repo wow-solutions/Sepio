@@ -14,6 +14,7 @@ import { after } from "next/server";
 import { authorizeCron } from "@/lib/cron-auth";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { sweepExpiredScrapeCache } from "@/lib/market-brain/scrape-cache";
+import { SITE_URL } from "@/lib/seo";
 
 export const maxDuration = 60; // dispatch is fast; cap to 60s
 
@@ -30,12 +31,12 @@ function jsonError(body: ErrorBody, status: number): Response {
 }
 
 // Resolve our own deployment URL for fire-and-forget fetch into per-brand routes.
-// Same shape as research-topics-dispatch (VERCEL_URL on prod, 127.0.0.1 locally
-// to dodge the IPv6 localhost resolution issue).
+// Uses the canonical prod domain (SITE_URL), NOT VERCEL_URL — the per-deployment
+// host sits behind Deployment Protection and would 401 the worker fetches
+// (found via the identical Codex P1 on the ai-visibility dispatch; research-
+// topics-dispatch already does it this way).
 function resolveBaseUrl(): string {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
+  if (process.env.VERCEL) return SITE_URL;
   return process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000";
 }
 

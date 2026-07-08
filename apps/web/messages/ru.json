@@ -198,6 +198,32 @@
         "body": "Тело",
         "global": "Весь пост"
       }
+    },
+    "aiVisibility": {
+      "header": "AI-видимость",
+      "subtitle": "Как часто ChatGPT, Claude, Gemini и Perplexity упоминают этот бренд, отвечая на вопросы покупателя. Замер по кнопке.",
+      "empty": "Замеров пока нет.",
+      "verdict": "Бренд отсутствует в {absent} из {total} отвеченных вопросов",
+      "measuredAt": "Замер от {date}",
+      "costLabel": "Стоимость ${cost}",
+      "delta": "vs предыдущий замер: {prevMentioned}/{prevTotal} → {mentioned}/{total} упоминаний",
+      "engineHeader": "По движкам",
+      "degradedTag": "Замер с деградацией — часть движков была недоступна.",
+      "gapsHeader": "Непокрытые вопросы",
+      "competitorsHeader": "Кого цитируют вместо этого бренда",
+      "lastFailed": "Последний замер ({date}) не удался: {error}",
+      "measureButton": "Замерить сейчас",
+      "measureRunning": "Замеряю…",
+      "measureRunningStatus": "Задаю ChatGPT, Claude, Gemini и Perplexity вопросы покупателя",
+      "measureHint": "Занимает 2–4 минуты, проверяет все четыре движка.",
+      "measureDone": "Готово — результат выше.",
+      "alreadyRunning": "Замер для этого бренда уже идёт. Проверьте через несколько минут.",
+      "error": {
+        "notSignedIn": "Вы вышли из аккаунта. Обновите страницу и повторите.",
+        "brandNotFound": "Бренд не найден.",
+        "noBetaAccess": "AI-видимость ещё не включена для этого аккаунта.",
+        "network": "Ошибка сети. Попробуйте ещё раз."
+      }
     }
   },
   "brandSettings": {
@@ -403,6 +429,7 @@
       "sourceWeb": "Web",
       "sourceDataforSeo": "Тренды",
       "sourceVoc": "Из твоих данных",
+      "sourceAiGap": "Пробел в AI",
       "selected": "Выбрана",
       "errorFallback": "Не удалось загрузить темы. Обнови, чтобы попробовать снова.",
       "viewSource": "Источник ↗",

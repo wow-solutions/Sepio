@@ -4,6 +4,7 @@ import { coerceClientBrain } from "@/lib/client-brain/schema";
 import { CompetitorsPanel } from "./competitors-panel";
 import { RulesPanel, type BrandRuleRow } from "./rules-panel";
 import { ClientBrainPanel } from "./client-brain-panel";
+import { AiVisibilityPanel } from "./ai-visibility-panel";
 
 // The brand "analysis" surfaces — Client Brain (study the client's site),
 // Market Brain (competitors + differentiation), Editorial Memory (brand rules).
@@ -67,6 +68,15 @@ export async function BrandAnalysisSections({
           <h2 style={sectionHeading()}>{t("editorialMemory.header")}</h2>
           <p style={sectionSub()}>{t("editorialMemory.subtitle")}</p>
           <RulesPanel brandId={brandId} rules={brandRules} />
+        </>
+      )}
+
+      {/* AI visibility — F1 measure loop (gated by beta_access) */}
+      {betaAccess && (
+        <>
+          <h2 style={sectionHeading()}>{t("aiVisibility.header")}</h2>
+          <p style={sectionSub()}>{t("aiVisibility.subtitle")}</p>
+          <AiVisibilityPanel brandId={brandId} website={website} />
         </>
       )}
     </>

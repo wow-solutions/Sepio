@@ -198,6 +198,32 @@
         "body": "Body",
         "global": "Whole post"
       }
+    },
+    "aiVisibility": {
+      "header": "AI visibility",
+      "subtitle": "How often ChatGPT, Claude, Gemini, and Perplexity mention this brand when a buyer asks. Measured on demand.",
+      "empty": "No measurements yet.",
+      "verdict": "Brand absent in {absent} of {total} answered questions",
+      "measuredAt": "Measured {date}",
+      "costLabel": "Cost ${cost}",
+      "delta": "vs previous run: {prevMentioned}/{prevTotal} → {mentioned}/{total} mentioned",
+      "engineHeader": "By engine",
+      "degradedTag": "Degraded run — some engines were unavailable.",
+      "gapsHeader": "Uncovered questions",
+      "competitorsHeader": "Cited instead of this brand",
+      "lastFailed": "Last measurement ({date}) failed: {error}",
+      "measureButton": "Measure now",
+      "measureRunning": "Measuring…",
+      "measureRunningStatus": "Asking ChatGPT, Claude, Gemini, and Perplexity buyer-intent questions",
+      "measureHint": "Takes 2–4 minutes, checks all four engines.",
+      "measureDone": "Done — results above.",
+      "alreadyRunning": "A measurement is already running for this brand. Check back in a few minutes.",
+      "error": {
+        "notSignedIn": "You're signed out. Refresh and try again.",
+        "brandNotFound": "Brand not found.",
+        "noBetaAccess": "AI visibility isn't enabled for this account yet.",
+        "network": "Network error. Try again."
+      }
     }
   },
   "brandSettings": {
@@ -403,6 +429,7 @@
       "sourceWeb": "Web",
       "sourceDataforSeo": "Trends",
       "sourceVoc": "From your data",
+      "sourceAiGap": "AI gap",
       "selected": "Selected",
       "errorFallback": "Couldn't load topics. Refresh to retry.",
       "viewSource": "Source ↗",

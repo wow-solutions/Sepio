@@ -15,7 +15,7 @@ import {
 // single-select with optional toggle-off. Parent triggers refresh by
 // incrementing refreshKey (after generate clears used card).
 
-type TopicSource = "web_search" | "dataforseo" | "voc_history";
+type TopicSource = "web_search" | "dataforseo" | "voc_history" | "ai_gap";
 
 type Topic = {
   id: string;
@@ -410,6 +410,15 @@ function renderMetadata(topic: Topic) {
     detail = `"${m.search_query}"`;
   } else if (topic.source === "voc_history" && typeof m.voc_type === "string") {
     detail = String(m.voc_type).replace("_", " ");
+  } else if (topic.source === "ai_gap" && typeof m.question === "string") {
+    const engine = typeof m.engine === "string" ? m.engine : null;
+    const domains = Array.isArray(m.cited_domains)
+      ? m.cited_domains.filter((d): d is string => typeof d === "string")
+      : [];
+    const enginePart = engine ? ` (${engine})` : "";
+    const citedPart =
+      domains.length > 0 ? ` · cited: ${domains.join(", ")}` : "";
+    detail = `"${m.question}"${enginePart}${citedPart}`;
   }
 
   if (!detail) return null;
@@ -439,6 +448,8 @@ function sourceLabelFor(
       return t("sourceDataforSeo");
     case "voc_history":
       return t("sourceVoc");
+    case "ai_gap":
+      return t("sourceAiGap");
     default:
       return source;
   }
@@ -452,6 +463,8 @@ function sourceColorFor(source: TopicSource): string {
       return "var(--accent, var(--info))";
     case "voc_history":
       return "var(--ink-muted)";
+    case "ai_gap":
+      return "var(--borderline)";
     default:
       return "var(--ink-muted)";
   }
