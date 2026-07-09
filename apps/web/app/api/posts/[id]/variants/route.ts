@@ -19,6 +19,12 @@ import {
 } from "@/lib/kitchen/channel-formats";
 import { getPostBody, bodyUpdateForPlatform } from "@/lib/post-body";
 import { assembleMoatContext } from "@/lib/moat-context";
+import {
+  buildAllowedNumbers,
+  buildNumbersRevisionNote,
+  configNumberSources,
+  findUngroundedNumbers,
+} from "@/lib/_private/grounded-numbers";
 import type { Json } from "@/lib/supabase/database.types";
 
 export const maxDuration = 60; // a single LLM call (short-form), but Sonnet headroom.
@@ -300,13 +306,14 @@ export async function POST(
   const appliedRulesSnapshot = rulesErr ? null : appliedRules;
   const appliedRulesJson = appliedRulesSnapshot as unknown as Json;
 
+  const variantFormat = DEFAULT_FORMAT_BY_CHANNEL[platform];
   let generated;
   try {
     generated = await generateVariantFromSource(
       configForGen,
       source.language,
       sourceBody,
-      DEFAULT_FORMAT_BY_CHANNEL[platform],
+      variantFormat,
       { extraContext },
     );
   } catch (err) {
@@ -321,6 +328,48 @@ export async function POST(
     return jsonError(
       "AI generation is temporarily unavailable. Please try again in a moment.",
       status,
+    );
+  }
+
+  // Grounded-numbers gate (T-ground PR1): the source article's figures passed
+  // the blog fact-validator, but the adapter can still ADD its own. Violation →
+  // ONE regenerate with feedback (cache-safe, user message); still dirty (or
+  // regen failed) → save anyway (fail-open, human gate) + surface the list.
+  let ungroundedNumbers: string[] = [];
+  try {
+    const allowedNumbers = buildAllowedNumbers([
+      sourceBody,
+      ...extraContext,
+      ...(proofErr ? [] : (proofRows ?? [])).map((p) => p.body),
+      ...configNumberSources(configForGen),
+    ]);
+    const violations = findUngroundedNumbers(generated.text, allowedNumbers);
+    if (violations.length > 0) {
+      try {
+        const second = await generateVariantFromSource(
+          configForGen,
+          source.language,
+          sourceBody,
+          variantFormat,
+          { extraContext, revisionNote: buildNumbersRevisionNote(violations) },
+        );
+        generated = second;
+        ungroundedNumbers = findUngroundedNumbers(
+          second.text,
+          allowedNumbers,
+        ).map((v) => v.raw);
+      } catch (err) {
+        console.error(
+          "[variants] grounded-numbers regen failed:",
+          err instanceof Error ? err.message : err,
+        );
+        ungroundedNumbers = violations.map((v) => v.raw);
+      }
+    }
+  } catch (err) {
+    console.error(
+      "[variants] grounded-numbers check failed:",
+      err instanceof Error ? err.message : err,
     );
   }
 
@@ -406,6 +455,10 @@ export async function POST(
     generated_from_source_version: groupVersion,
     content_text: bodyPatch.content_text ?? null,
     content_markdown: bodyPatch.content_markdown ?? null,
+    // [] = checked clean; non-empty = figures that survived the regen pass.
+    // The 23505 race-recovery response above omits the field (unknown for the
+    // winner's generation) — the client treats undefined as "no warning".
+    ungrounded_numbers: ungroundedNumbers,
     applied_rules: appliedRulesSnapshot,
   });
 }

@@ -69,6 +69,10 @@ export type GenerateOptions = {
   apiKey?: string;
   signal?: AbortSignal;
   extraContext?: ContextBlock[];
+  // Appended to the USER message (never the cached system blocks — cache-safe).
+  // Used by the grounded-numbers regenerate pass to feed violation feedback
+  // into a second attempt of the same generation call.
+  revisionNote?: string;
 };
 
 function asArray<T>(v: unknown): T[] {
@@ -379,7 +383,14 @@ async function callClaude(
                 cache_control: { type: "ephemeral" },
               },
             ],
-            messages: [{ role: "user", content: userText }],
+            messages: [
+              {
+                role: "user",
+                content: opts?.revisionNote
+                  ? `${userText}\n\n${opts.revisionNote}`
+                  : userText,
+              },
+            ],
           },
           { signal: opts?.signal },
         ),

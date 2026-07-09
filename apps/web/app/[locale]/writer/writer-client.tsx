@@ -58,6 +58,9 @@ type GenerateResponse = {
   // W2 receipt snapshot. Optional (an older server build omits it); null =
   // rules weren't tracked for this generation → no receipt.
   applied_rules?: AppliedRule[] | null;
+  // Grounded-numbers gate: figures that survived the regen pass. Optional
+  // (older builds / blog path omit it); undefined or [] = no warning.
+  ungrounded_numbers?: string[];
 };
 
 // Output format chosen in the channel selector — drives the next generation.
@@ -231,6 +234,9 @@ export function WriterClient({
     grounded: boolean;
     source: { url: string; title: string | null } | null;
   } | null>(null);
+  // Figures in the CURRENT draft that the grounded-numbers gate could not trace
+  // to the brand's facts — captured at generate time, like draftGrounding.
+  const [ungroundedNumbers, setUngroundedNumbers] = useState<string[]>([]);
   // Increment to trigger TopicPicker re-fetch (e.g. after generate consumes a card).
   const [topicsRefreshKey, setTopicsRefreshKey] = useState(0);
   // Right preview panel can collapse to the right edge.
@@ -548,6 +554,7 @@ export function WriterClient({
     setStatus(data.status);
     setExcerpt(data.excerpt ?? "");
     setAppliedRules(data.applied_rules ?? null);
+    setUngroundedNumbers(data.ungrounded_numbers ?? []);
     setStage("ready");
     // Capture grounding for the editor-header chip — only when an angle drove
     // this draft (non-angle drafts, incl. blog, have no source provenance).
@@ -1183,6 +1190,22 @@ export function WriterClient({
               items={publishSuccess}
               onDismiss={() => setPublishSuccess(null)}
             />
+          )}
+          {ungroundedNumbers.length > 0 && stage !== "generating" && (
+            <div
+              style={{
+                maxWidth: "var(--editor-max-w)",
+                margin: "0 auto 16px",
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "rgba(176,123,80,0.10)",
+                border: "1px solid rgba(176,123,80,0.28)",
+                fontSize: 13,
+                color: "var(--ink-muted)",
+              }}
+            >
+              {t("numbersWarning", { list: ungroundedNumbers.join(", ") })}
+            </div>
           )}
           {stage === "generating" ? (
             // The 30–180s wait gets a real progress surface (bar + elapsed +

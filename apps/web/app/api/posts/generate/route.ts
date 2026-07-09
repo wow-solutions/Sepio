@@ -24,6 +24,12 @@ import {
   type ArticleExtract,
 } from "@/lib/_private/article-fetch";
 import { assembleMoatContext } from "@/lib/moat-context";
+import {
+  buildAllowedNumbers,
+  buildNumbersRevisionNote,
+  configNumberSources,
+  findUngroundedNumbers,
+} from "@/lib/_private/grounded-numbers";
 import { countUsableFacts } from "@/lib/client-brain/usable-facts";
 import { renderClientBrainBlock } from "@/lib/client-brain/client-brain-context";
 import {
@@ -614,40 +620,88 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  let claude;
-  try {
-    if (angle) {
-      const userText = buildAngleUserText(angle, {
+  // Hoisted out of the try so the grounded-numbers regenerate pass below can
+  // re-issue the exact same call (pure/sync builder).
+  const angleUserText = angle
+    ? buildAngleUserText(angle, {
         topicText: effectiveTopicHint ?? "",
         sourceUrl,
         article: resolvedArticle,
         stance: effectiveStance,
         brandName: brand.name,
-      });
-      claude = await generatePostFromUserMessage(
+      })
+    : null;
+  // One entry point for both attempts — first pass without a revision note,
+  // regenerate pass with the violation feedback appended to the user message.
+  const runGeneration = (revisionNote?: string) => {
+    const opts = revisionNote ? { extraContext, revisionNote } : { extraContext };
+    if (angleUserText) {
+      return generatePostFromUserMessage(
         configForGen,
         brand.primary_language,
-        userText,
-        { extraContext },
+        angleUserText,
+        opts,
       );
-    } else {
-      claude = source_text
-        ? await adaptToLinkedIn(
-            configForGen,
-            brand.primary_language,
-            source_text,
-            { extraContext },
-          )
-        : await generatePost(
-            configForGen,
-            brand.primary_language,
-            effectiveTopicHint,
-            "linkedin_post",
-            { extraContext },
-          );
     }
+    return source_text
+      ? adaptToLinkedIn(configForGen, brand.primary_language, source_text, opts)
+      : generatePost(
+          configForGen,
+          brand.primary_language,
+          effectiveTopicHint,
+          "linkedin_post",
+          opts,
+        );
+  };
+
+  let claude;
+  try {
+    claude = await runGeneration();
   } catch (err) {
     return generationErrorResponse(err);
+  }
+
+  // Grounded-numbers gate (T-ground PR1): every figure in the draft must exist
+  // in the sources the model saw. Violation → ONE regenerate with feedback in
+  // the user message (cache-safe); still dirty (or regen failed) → save anyway
+  // (fail-open — drafts pass a human gate) and surface the list to the UI.
+  // The whole gate is wrapped: a checker bug must never cost a paid draft.
+  let ungroundedNumbers: string[] = [];
+  try {
+    const allowedNumbers = buildAllowedNumbers([
+      effectiveTopicHint,
+      source_text,
+      resolvedCandidateText,
+      angleUserText,
+      resolvedArticle?.title,
+      resolvedArticle?.excerpt,
+      resolvedArticle?.paragraphs.join("\n"),
+      ...extraContext,
+      ...(proofErr ? [] : (proofRows ?? [])).map((p) => p.body),
+      ...configNumberSources(configForGen),
+    ]);
+    const violations = findUngroundedNumbers(claude.text, allowedNumbers);
+    if (violations.length > 0) {
+      try {
+        const second = await runGeneration(buildNumbersRevisionNote(violations));
+        claude = second;
+        ungroundedNumbers = findUngroundedNumbers(second.text, allowedNumbers).map(
+          (v) => v.raw,
+        );
+      } catch (err) {
+        // Keep the first draft; the badge carries the original violations.
+        console.error(
+          "[generate] grounded-numbers regen failed:",
+          err instanceof Error ? err.message : err,
+        );
+        ungroundedNumbers = violations.map((v) => v.raw);
+      }
+    }
+  } catch (err) {
+    console.error(
+      "[generate] grounded-numbers check failed:",
+      err instanceof Error ? err.message : err,
+    );
   }
 
   // Detection is best-effort (ADR-0018): it is no longer a product promise, so a
@@ -782,5 +836,7 @@ export async function POST(request: Request): Promise<Response> {
       ? { url: sourceUrl, title: resolvedArticle?.title ?? null }
       : null,
     applied_rules: appliedRulesSnapshot,
+    // [] = checked clean; non-empty = figures that survived the regen pass.
+    ungrounded_numbers: ungroundedNumbers,
   });
 }

@@ -169,6 +169,8 @@ export default async function WriterPage({ searchParams }: PageProps) {
           error: null,
           externalUrl: r.external_post_url ?? null,
           appliedRules: coerceAppliedRules(r.applied_rules),
+          // Not persisted (v1 badge is generation-scoped) — reloads start clean.
+          ungroundedNumbers: [],
         };
       }
       const openedPlatform: ChannelId =

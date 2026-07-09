@@ -53,6 +53,7 @@
       }
     },
     "groundedFrom": "Basado en {domain}",
-    "groundedTopicOnly": "Del tema"
+    "groundedTopicOnly": "Del tema",
+    "numbersWarning": "Contiene cifras que no están en tus datos: {list}. Verifícalas antes de publicar."
   }
 }

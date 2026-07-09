@@ -472,6 +472,7 @@
     },
     "groundedFrom": "Grounded in {domain}",
     "groundedTopicOnly": "From the topic",
+    "numbersWarning": "Contains figures not found in your facts: {list}. Verify before publishing.",
     "emptyEyebrow": "New post",
     "emptyTitle": "Start with <em>one idea.</em>",
     "emptyBody": "Give Sepio a topic or paste an article in the panel on the left. It drafts the post in your brand voice — you edit, then publish.",

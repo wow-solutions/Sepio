@@ -220,6 +220,23 @@ export function KitchenCenter({
               </button>
             </div>
           )}
+          {!!variant?.ungroundedNumbers?.length && !variant.loading && !variant.error && body && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: "10px 14px",
+                borderRadius: 10,
+                background: "rgba(176,123,80,0.10)",
+                border: "1px solid rgba(176,123,80,0.28)",
+                fontSize: 13,
+                color: "var(--ink-muted)",
+              }}
+            >
+              {t("numbersWarning", {
+                list: variant.ungroundedNumbers.join(", "),
+              })}
+            </div>
+          )}
           {variant?.loading ? (
             <GenerationProgress
               compact

@@ -37,6 +37,9 @@ export type VariantData = {
   // W2 receipt snapshot from posts.applied_rules. null = not tracked (no
   // receipt); [] = tracked, zero rules applied (teach-Sepio CTA).
   appliedRules: AppliedRule[] | null;
+  // Grounded-numbers gate: figures the checker couldn't trace to brand facts.
+  // [] = clean or unknown (race-recovery / older builds omit the field).
+  ungroundedNumbers: string[];
 };
 
 export type KitchenSource = {
@@ -149,6 +152,7 @@ export function KitchenProvider({
             error: null,
             externalUrl: null,
             appliedRules: null,
+            ungroundedNumbers: [],
           },
           ...initialGroup.variants,
         }
@@ -225,6 +229,7 @@ export function KitchenProvider({
                 error: null,
                 externalUrl: null,
                 appliedRules: null,
+                ungroundedNumbers: [],
               },
             }
           : {},
@@ -276,6 +281,7 @@ export function KitchenProvider({
           error: null,
           externalUrl: v[c]?.externalUrl ?? null,
           appliedRules: v[c]?.appliedRules ?? null,
+          ungroundedNumbers: v[c]?.ungroundedNumbers ?? [],
         },
       }));
       try {
@@ -291,6 +297,7 @@ export function KitchenProvider({
               content_markdown?: string | null;
               variant_state?: string;
               applied_rules?: unknown;
+              ungrounded_numbers?: string[];
               error?: string;
             }
           | null;
@@ -305,6 +312,7 @@ export function KitchenProvider({
               error: data?.error ?? `HTTP ${res.status}`,
               externalUrl: v[c]?.externalUrl ?? null,
               appliedRules: v[c]?.appliedRules ?? null,
+              ungroundedNumbers: v[c]?.ungroundedNumbers ?? [],
             },
           }));
           return null;
@@ -320,6 +328,9 @@ export function KitchenProvider({
             error: null,
             externalUrl: v[c]?.externalUrl ?? null,
             appliedRules: coerceAppliedRules(data.applied_rules),
+            ungroundedNumbers: Array.isArray(data.ungrounded_numbers)
+              ? data.ungrounded_numbers.filter((n) => typeof n === "string")
+              : [],
           },
         }));
         return newPostId;
@@ -335,6 +346,7 @@ export function KitchenProvider({
             error: msg,
             externalUrl: v[c]?.externalUrl ?? null,
             appliedRules: v[c]?.appliedRules ?? null,
+          ungroundedNumbers: v[c]?.ungroundedNumbers ?? [],
           },
         }));
         return null;
